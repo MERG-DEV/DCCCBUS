@@ -1,13 +1,8 @@
 define(test_name, slim_boot_test)dnl
 include(common.inc)dnl
-include(data_file.inc)dnl
-include(rx_tx.inc)dnl
-include(io.inc)dnl
 include(hardware.inc)dnl
-include(cbusdefs.inc)dnl
 
 beginning_of_test(847)
-    data_file_variables
     begin_test
       set_setup_off
       set_dolearn_off
