@@ -294,6 +294,10 @@ clear_rx_masks_loop
   bcf     COMSTAT, RXB0OVFL ; Ensure overflow flags are clear
   bcf     COMSTAT, RXB1OVFL
 
+slim_setup
+  Set_FLiM_LED_Off
+  Set_SLiM_LED_On
+
   ; Drop through to main_loop
 
 
