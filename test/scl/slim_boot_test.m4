@@ -1,6 +1,4 @@
 define(test_name, slim_boot_test)dnl
-include(common.inc)dnl
-include(hardware.inc)dnl
 
 beginning_of_test(847)
     begin_test
