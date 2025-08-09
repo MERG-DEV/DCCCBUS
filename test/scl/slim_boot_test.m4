@@ -1,10 +1,10 @@
 define(test_name, slim_boot_test)dnl
 
-beginning_of_test(847)
+beginning_of_test(3)
     begin_test
-      set_setup_off
-      set_dolearn_off
-      set_unlearn_off
+       set_can_rx_recessive
+      --
+      configure_can
       --
       wait_until_slim -- Booted into SLiM
       --

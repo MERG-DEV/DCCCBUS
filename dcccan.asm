@@ -218,6 +218,7 @@ initialisation
 
   ; Clear first page of RAM
   lfsr    FSR0, 0
+
 ram_clear_loop
   clrf    POSTINC0
   tstfsz  FSR0L
@@ -232,7 +233,7 @@ ram_clear_loop
   movwf   TRISA
 
   ; RB2 > CANTx, RB3 < CANRx, RB6 > Yellow LED (FLiM), RB7 > Green LED (SLiM)
-  movlw   b'00111000'       ; PortB bit 2, CAN Tx output
+  movlw   b'00001100'       ; PortB bit 2, CAN Tx output
                             ;       bit 3, CAN Rx input
                             ;       bit 6, Yellow (FLiM) LED
                             ;       bit 7, Green (SLiM) LED
@@ -240,17 +241,27 @@ ram_clear_loop
   movwf   TRISB
   Set_FLiM_LED_Off
   Set_SLiM_LED_Off
-  bsf     PORTB,2           ; Initialise CAN Tx as recessive
+  bsf     PORTB,CANTX       ; Initialise CAN Tx as recessive
 
   clrf    TRISC             ; Port C all outputs
   clrf    PORTC
 
   bsf     RCON, IPEN        ; Enable interrupt priority levels
   clrf    EECON1            ; Disable accesses to program memory
-  clrf    ECANCON           ; CAN mode 0, legacy
 
-  bsf     CANCON,7          ; CAN module into configure mode
-  movlw   b'00000011'       ; Bit rate 125,000
+  bsf     CANCON,REQOP2     ; Request CAN module configure mode
+
+can_config_wait
+  btfss   CANSTAT,OPMODE2   ; Skip if CAN module in configure mode ...
+  bra     can_config_wait   ; ... else wait
+
+  movlw   b'10110000'       ; Mode 2, enhanced FIFO
+                            ; FIFO interrupt on 1 Rx buffer remaining
+                            ; Map Rx buffer 0 into Access Bank
+  movwf   ECANCON
+
+  movlw   b'00000011'       ; Synchronisation jump width 1 x Tq
+                            ; Tq = 8/Fosc, 125,000 Kb/s
   movwf   BRGCON1
 
   movlw   b'10011110'       ; Phase Segment 2 Time Freely Programmable
@@ -268,19 +279,15 @@ ram_clear_loop
                             ; Disable message capture
   movwf   CIOCON
 
-  movlw   b'00100100'       ; Receive valid messages with standard identifier
-                            ; Enable double buffer
-                            ; Allow jump table offset between 1 and 10
-                            ; Enable acceptance filter 0
-  movwf   RXB0CON           ; Configure Rx buffer 0
+  movlw   b'00100100'       ; Receive valid messages as per acceptance filters
+  movwf   RXB0CON
 
-  movlw   b'00100000'       ; Receive valid messages with standard identifier
-  movwf   RXB1CON           ; Configure Rx buffer 1
+  clrf    RXB1CON           ; Receive valid messages as per acceptance filters
 
   clrf    RXF0SIDL
   clrf    RXF1SIDL
-  movlb   0                 ; Select RAM bank 0
 
+  movlb   0                 ; Select RAM bank 0
   lfsr    FSR0, RXM0SIDH    ; Clear Rx acceptance masks
   movlw   low RXM1EIDL + 1
 
@@ -289,7 +296,12 @@ clear_rx_masks_loop
   cpfseq  FSR0L
   bra     clear_rx_masks_loop
 
-  clrf    CANCON            ; CAN module out of configure mode
+  clrf    CANCON            ; Request CAN module normal mode
+
+can_normal_wait
+  movf    CANSTAT,W
+  andlw   b'11100000'       ; Mask out all except operation mode bits
+  bnz     can_normal_wait   ; Loop if CAN module not in normal mode
 
   bcf     COMSTAT, RXB0OVFL ; Ensure overflow flags are clear
   bcf     COMSTAT, RXB1OVFL

@@ -33,6 +33,20 @@ define(wait_until_slim,
        idle_datmode := slim_idle_datmode;
        report("test_name: Green LED (SLiM) on");)
 
+define(set_can_rx_dominant, CANRX <= '0';)
+define(set_can_rx_recessive, CANRX <= '1';)
+
+define(configure_can,
+       if CANCON.REQOP2 != '1' then
+         report("test_name: Waiting to configure CAN");
+         wait until CANCON.REQOP2 == '1';
+       end if;
+       CANSTAT.OPMODE2 <= '1';
+       report("test_name: Configuring CAN");
+       wait until CANCON.REQOP2 == '0';
+       CANSTAT.OPMODE2 <= '0';
+       report("test_name: CAN configured");)
+
 define(setup_button, RA2)
 define(set_setup_off, setup_button <= '1';)
 define(set_setup_on, setup_button <= '0';)
