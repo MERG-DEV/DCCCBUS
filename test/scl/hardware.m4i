@@ -1,36 +1,22 @@
 divert(-1)
-define(slim_idle_datmode, 0)
-define(flim_idle_datmode, 8)
-define(learn_datmode, 16)
-define(wait_until_idle,
-       if Datmode != idle_datmode then
-         wait until Datmode == idle_datmode;
-       end if;)
+define(wait_until_idle;)
 
 define(enter_learn_mode,
-       if idle_datmode != slim_idle_datmode then
-         idle_datmode := idle_datmode + learn_datmode;
-       end if;
        rx_data(OPC_NNLRN, $1, $2) -- NNLRN, CBUS enter learn mode
        wait_until_idle)
 
 define(exit_learn_mode,
-       if idle_datmode != slim_idle_datmode then
-         idle_datmode := idle_datmode - learn_datmode;
-       end if;
        rx_data(OPC_NNULN, $1, $2) -- NNULN, CBUS exit learn mode
        wait_until_idle)
 
 define(flim_led, RB6)
 define(wait_until_flim,
        wait until flim_led == '1';
-       idle_datmode := flim_idle_datmode;
        report("test_name: Yellow LED (FLiM) on");)
 
 define(slim_led, RB7)
 define(wait_until_slim,
        wait until slim_led == '1';
-       idle_datmode := slim_idle_datmode;
        report("test_name: Green LED (SLiM) on");)
 
 define(set_can_rx_dominant, CANRX <= '0';)

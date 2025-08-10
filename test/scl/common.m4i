@@ -15,7 +15,6 @@ define(timeout_process,
 
 define(beginning_of_test,
        configuration for "processor_type" is
-         shared variable Datmode;
          {ifelse( $2, {}, {--}, shared $2;)}
          {ifelse( $3, {}, {--}, shared $3;)}
        end configuration;
@@ -26,8 +25,7 @@ define(beginning_of_test,
            --
          test_name: process is
            type test_result is (pass, fail);
-           variable test_state   : test_result;
-           variable idle_datmode : integer;)
+           variable test_state   : test_result;)
 
 define(begin_test,
        begin
