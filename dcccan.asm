@@ -116,13 +116,13 @@ BOOTLOAD_EE          equ 0xF000FE
 NUMBER_OF_NODE_PARAMETERS  equ     24
 AFTER_NODE_PARAMETERS      equ NODE_PARAMETERS + NUMBER_OF_NODE_PARAMETERS
 
-FLIM_LED_PORT  equ PORTB
+FLIM_LED_PORT  equ LATB
 FLIM_LED_BIT   equ 6  ; Yellow LED
 #define  FLiM_LED         FLIM_LED_PORT, FLIM_LED_BIT
 #define  Set_FLiM_LED_On  bsf FLiM_LED
 #define  Set_FLiM_LED_Off bcf FLiM_LED
 
-SLIM_LED_PORT  equ PORTB
+SLIM_LED_PORT  equ LATB
 SLIM_LED_BIT   equ 7  ; Green LED
 #define  SLiM_LED         SLIM_LED_PORT, SLIM_LED_BIT
 #define  Set_SLiM_LED_On  bsf SLiM_LED
@@ -213,10 +213,10 @@ low_priority_interrupt_routine
 
 ;**********************************************************************
 initialisation
-  movlb   15                ; Select RAM bank 15
   clrf    INTCON            ; Disable interrupts
 
   ; Clear first page of RAM
+  bankisel 0
   lfsr    FSR0, 0
 
 ram_clear_loop
@@ -232,16 +232,15 @@ ram_clear_loop
   movlw   b'00100000'       ; PortA bit 5, setup pushbutton input
   movwf   TRISA
 
-  ; RB2 > CANTx, RB3 < CANRx, RB6 > Yellow LED (FLiM), RB7 > Green LED (SLiM)
-  movlw   b'00001100'       ; PortB bit 2, CAN Tx output
-                            ;       bit 3, CAN Rx input
-                            ;       bit 6, Yellow (FLiM) LED
-                            ;       bit 7, Green (SLiM) LED
+  movlw   b'00001100'       ; PortB bit 2, (RB2), CAN Tx output
+                            ;       bit 3, (RB3) CAN Rx input
+                            ;       bit 6, (RB6) Yellow (FLiM) LED output
+                            ;       bit 7, (RB7) Green (SLiM) LED output
                             ; Pullups enabled on PORTB inputs
   movwf   TRISB
   Set_FLiM_LED_Off
   Set_SLiM_LED_Off
-  bsf     PORTB,CANTX       ; Initialise CAN Tx as recessive
+  bsf     LATB,CANTX        ; Initialise CAN Tx as recessive
 
   clrf    TRISC             ; Port C all outputs
   clrf    PORTC
@@ -249,35 +248,42 @@ ram_clear_loop
   bsf     RCON, IPEN        ; Enable interrupt priority levels
   clrf    EECON1            ; Disable accesses to program memory
 
+  banksel CANCON
   bsf     CANCON,REQOP2     ; Request CAN module configure mode
 
 can_config_wait
   btfss   CANSTAT,OPMODE2   ; Skip if CAN module in configure mode ...
   bra     can_config_wait   ; ... else wait
 
-  movlw   b'10110000'       ; Mode 2, enhanced FIFO
-                            ; FIFO interrupt on 1 Rx buffer remaining
-                            ; Map Rx buffer 0 into Access Bank
-  movwf   ECANCON
+  ; Set CAN bit rate and sample point
 
-  movlw   b'00000011'       ; Synchronisation jump width 1 x Tq
-                            ; Tq = 8/Fosc, 125,000 Kb/s
+  movlw   b'00000011'       ; Synchronisation jump width = 1 Tq
+                            ; Tq = 8/Fosc
   movwf   BRGCON1
 
-  movlw   b'10011110'       ; Phase Segment 2 Time Freely Programmable
-                            ; Bus sampled once at sample point
-                            ; Phase Segment 1 Time 4 x Tq
-                            ; Propogation Time 7 x Tq
+  movlw   b'11011110'       ; Phase segment 2 freely programmable, SEG2PHTS
+                            ; Bus sampled three times up to sample point
+                            ; Phase segment 1 = 4 Tq
+                            ; Propogation segment = 7 Tq
   movwf   BRGCON2
 
   movlw   b'00000011'       ; Enable bus activity wake up
-                            ; Bus filter not used for wake up
-                            ; Phase Segment 2 Time 4 x Tq
+                            ; Bus line filter not used for wake up
+                            ; Phase segment 2 (4 Tq) but ignored as ...
+                            ; ... SEG2PHTS is set so = Phase segment 1 (4 Tq)
   movwf   BRGCON3
+
+  ; Sum of segments (syncronisation fixed at 1 Tq) = 16 Tq => 125,000 Kb/s, ...
+  ; ... sample point is nominally 12 Tq = 75% of nominal bit time
 
   movlw   b'00100000'       ; CAN Tx to Vdd when recesive
                             ; Disable message capture
   movwf   CIOCON
+
+  movlw   b'10110000'       ; Mode 2, enhanced FIFO
+                            ; FIFO interrupt on 1 Rx buffer remaining
+                            ; Initially map Rx buffer 0 into Access Bank
+  movwf   ECANCON
 
   movlw   b'00100100'       ; Receive valid messages as per acceptance filters
   movwf   RXB0CON
@@ -287,7 +293,6 @@ can_config_wait
   clrf    RXF0SIDL
   clrf    RXF1SIDL
 
-  movlb   0                 ; Select RAM bank 0
   lfsr    FSR0, RXM0SIDH    ; Clear Rx acceptance masks
   movlw   low RXM1EIDL + 1
 
@@ -305,6 +310,8 @@ can_normal_wait
 
   bcf     COMSTAT, RXB0OVFL ; Ensure overflow flags are clear
   bcf     COMSTAT, RXB1OVFL
+
+  movlb   0                 ; CAN setup complete, select RAM bank 0
 
 slim_setup
   Set_FLiM_LED_Off
