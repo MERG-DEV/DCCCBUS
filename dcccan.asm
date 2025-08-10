@@ -212,17 +212,23 @@ low_priority_interrupt_routine
 
 
 ;**********************************************************************
-initialisation
-  clrf    INTCON            ; Disable interrupts
-
-  ; Clear first page of RAM
-  bankisel 0
-  lfsr    FSR0, 0
-
 ram_clear_loop
   clrf    POSTINC0
   tstfsz  FSR0L
   bra     ram_clear_loop
+  return
+
+
+;**********************************************************************
+initialisation
+  clrf    INTCON            ; Disable interrupts
+
+  lfsr    FSR0, 0x000       ; Clear data memeory bank 0
+  call    ram_clear_loop
+  lfsr    FSR0, 0x100       ; Clear data memeory bank 1
+  call    ram_clear_loop
+  lfsr    FSR0, 0x200       ; Clear data memeory bank 2
+  call    ram_clear_loop
 
   ; Turn off Port A A/D, all bits digital I/O RA5 < Setup push button
   clrf    ADCON0

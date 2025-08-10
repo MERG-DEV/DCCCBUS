@@ -1,6 +1,6 @@
 set_test_name()dnl
 
-beginning_of_test(3)
+beginning_of_test(5)
     begin_test
        set_can_rx_recessive
       --
