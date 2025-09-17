@@ -25,10 +25,10 @@
 ;                          RA0| 2     27|RB6 -> Yellow LED (FLiM)     *
 ;                          RA1| 3     26|RB5                          *
 ;                          RA2| 4     25|RB4                          *
-;                          RA3| 5     24|CANRx <-                     *
-;                          RA4| 6     23|CANTx ->                     *
+;                          RA3| 5     24|RB3 <- CANRx                 *
+;                          RA4| 6     23|RB2 -> CANTx                 *
 ;     Setup push button -> RA5| 7     22|RB1                          *
-;                    0V -> VSS| 8     21|RB0                          *
+;                    0V -> VSS| 8     21|RB0 <- DCC                   *
 ;                    Resonator| 9     20|VDD <- +5V                   *
 ;                    Resonator|10     19|VSS <- 0V                    *
 ;                          RC0|11     18|RC7                          *
@@ -230,26 +230,29 @@ initialisation
   lfsr    FSR0, 0x200       ; Clear data memeory bank 2
   call    ram_clear_loop
 
-  ; Turn off Port A A/D, all bits digital I/O RA5 < Setup push button
+  ; Turn off Port A A/D, all bits digital I/O
   clrf    ADCON0
   movlw   b'00001111'
   movwf   ADCON1
 
-  movlw   b'00100000'       ; PortA bit 5, setup pushbutton input
+  clrf    PORTA
+  movlw   b'00100000'       ; PortA bit 5 (RA5), setup pushbutton input
   movwf   TRISA
 
-  movlw   b'00001100'       ; PortB bit 2, (RB2), CAN Tx output
-                            ;       bit 3, (RB3) CAN Rx input
-                            ;       bit 6, (RB6) Yellow (FLiM) LED output
-                            ;       bit 7, (RB7) Green (SLiM) LED output
+  clrf    PORTB
+  movlw   b'00001001'       ; PortB bit 0 (RB0), DCC input
+                            ;       bit 2 (RB2), CAN Tx output
+                            ;       bit 3 (RB3), CAN Rx input
+                            ;       bit 6 (RB6), Yellow (FLiM) LED output
+                            ;       bit 7 (RB7), Green (SLiM) LED output
                             ; Pullups enabled on PORTB inputs
   movwf   TRISB
   Set_FLiM_LED_Off
   Set_SLiM_LED_Off
   bsf     LATB,CANTX        ; Initialise CAN Tx as recessive
 
-  clrf    TRISC             ; Port C all outputs
   clrf    PORTC
+  clrf    TRISC             ; Port C all outputs
 
   bsf     RCON, IPEN        ; Enable interrupt priority levels
   clrf    EECON1            ; Disable accesses to program memory
