@@ -59,4 +59,36 @@ define(output_wait_for_data_file_output,
          readline(data_file, output_report);
        end loop;)
 
+-- 16MHz clock = 4 instruction cycles per microsecond
+define(u_sec, {eval($1 * 4)} ic)
+
+define(dcc_one_half_time, 58)
+define(dcc_zero_half_time, 100)
+
+define(input_dcc_one,
+       set_dcc_on
+       wait for u_sec(dcc_one_half_time);
+       set_dcc_off
+       wait for u_sec(dcc_one_half_time);)
+
+define(input_dcc_zero,
+       set_dcc_on
+       wait for u_sec(dcc_zero_half_time);
+       set_dcc_off
+       wait for u_sec(dcc_zero_half_time);)
+
+define(input_dcc_bit,
+       {ifelse($1, 1, input_dcc_one, input_dcc_zero)})
+
+define(_dcc_preamble_loop,
+       {ifelse($1, 0, {}, input_dcc_one
+                          {_dcc_preamble_loop(decr($1))})})
+
+define(input_dcc_preamble,
+       _dcc_preamble_loop(14))
+
+define(input_dcc_start,
+       input_dcc_preamble
+       input_dcc_zero)
+
 divert(0)dnl
