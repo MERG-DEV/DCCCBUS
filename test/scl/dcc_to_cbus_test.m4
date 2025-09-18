@@ -1,6 +1,6 @@
-set_test_name()dnl
+set_test_name()
 
-beginning_of_test(15)
+beginning_of_test(30)
     begin_test
       --
       configure_can
@@ -13,4 +13,6 @@ beginning_of_test(15)
       end if;
       --
       input_dcc_start
+      input_dcc_basic_acc_event(756)
+      --
 end_of_test

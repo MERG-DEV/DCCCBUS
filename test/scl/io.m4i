@@ -66,29 +66,55 @@ define(dcc_one_half_time, 58)
 define(dcc_zero_half_time, 100)
 
 define(input_dcc_one,
+       -- DCC One
        set_dcc_on
        wait for u_sec(dcc_one_half_time);
        set_dcc_off
        wait for u_sec(dcc_one_half_time);)
 
 define(input_dcc_zero,
+       -- DCC Zero
        set_dcc_on
        wait for u_sec(dcc_zero_half_time);
        set_dcc_off
        wait for u_sec(dcc_zero_half_time);)
 
-define(input_dcc_bit,
-       {ifelse($1, 1, input_dcc_one, input_dcc_zero)})
+define(input_dcc_bit, {ifelse($1, 1, input_dcc_one, input_dcc_zero)})
 
-define(_dcc_preamble_loop,
-       {ifelse($1, 0, {}, input_dcc_one
-                          {_dcc_preamble_loop(decr($1))})})
+define(input_dcc_bits,
+       {ifelse($1, {}, {}, input_dcc_bit(substr($1, 0, 1))
+                           {input_dcc_bits(substr($1, 1))})})
 
-define(input_dcc_preamble,
-       _dcc_preamble_loop(14))
+define(input_dcc_complement, {ifelse($1, 0, input_dcc_one, input_dcc_zero)})
+
+define(input_dcc_complements,
+       {ifelse($1, {}, {}, input_dcc_complement(substr($1, 0, 1))
+                           {input_dcc_complements(substr($1, 1))})})
+
+define(input_dcc_preamble, input_dcc_bits(eval(14, 1)))
 
 define(input_dcc_start,
-       input_dcc_preamble
+       -- Preamble
+       input_dcc_preamble()
+       -- Preamble End
+       input_dcc_zero)
+
+define(input_dcc_basic_acc_event,
+       -- Byte One
+       input_dcc_one
+       input_dcc_zero
+       {input_dcc_bits(substr(eval($1 + 4, 2, 11), 3, 6))}
+       -- Byte One End
+       input_dcc_zero
+       -- Byte Two
+       input_dcc_one
+       {input_dcc_bits(eval(7 - {0b}substr(eval($1 + 4, 2, 11), 0, 3), 2, 3))}
+       -- Activation
+       input_dcc_one
+       -- Pair and Selection from Pair
+       {input_dcc_bits(substr(eval($1 + 4, 2, 11), 9, 2))}
+       {ifelse($2, Off, input_dcc_zero, input_dcc_one)}
+       -- Byte Two End
        input_dcc_zero)
 
 divert(0)dnl
