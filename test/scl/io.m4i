@@ -92,16 +92,21 @@ define(cmp_event_to_acc,
 
 define(checksum, {eval({0b}$1 ^ {0b}$2, 2, 8)})
 
-define(input_dcc_basic_acc_event,
+define(basic_acc_byte_1, {{10}event_to_acc($1, 3, 6)})
+
+define(basic_acc_byte_2,
+       {{1}cmp_event_to_acc($1, 3){1}event_to_acc($1, 9, 2)ifelse($2, Off, 0, 1)})
+
+define(input_dcc_basic_acc,
        -- Preamble
        input_dcc_bits(eval(14, 1){0})
        -- Byte One
-       {input_dcc_bits({10}event_to_acc($1, 3, 6){0})}
+       {input_dcc_bits(basic_acc_byte_1($1){0})}
        -- Byte Two
-       {input_dcc_bits({1}cmp_event_to_acc($1, 3){1}event_to_acc($1, 9, 2)ifelse($2, Off, 0, 1){0})}
+       {input_dcc_bits(basic_acc_byte_2($1, $2){0})}
       -- Checksum
-       {input_dcc_bits(checksum({10}event_to_acc($1, 3, 6),
-                       {1}cmp_event_to_acc($1, 3){1}event_to_acc($1, 9, 2)ifelse($2, Off, 0, 1)))}
+       {input_dcc_bits(checksum(basic_acc_byte_1($1),
+                                basic_acc_byte_2($1, $2)))}
        -- End of Packet
        input_dcc_one)
 

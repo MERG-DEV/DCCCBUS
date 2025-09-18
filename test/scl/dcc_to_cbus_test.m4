@@ -12,6 +12,6 @@ beginning_of_test(30)
         test_state := fail;
       end if;
       --
-      input_dcc_basic_acc_event(760)
+      input_dcc_basic_acc(760)
       --
 end_of_test
