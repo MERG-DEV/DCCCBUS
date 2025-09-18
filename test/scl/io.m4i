@@ -85,36 +85,24 @@ define(input_dcc_bits,
        {ifelse($1, {}, {}, input_dcc_bit(substr($1, 0, 1))
                            {input_dcc_bits(substr($1, 1))})})
 
-define(input_dcc_complement, {ifelse($1, 0, input_dcc_one, input_dcc_zero)})
+define(event_to_acc, {substr(eval($1 + 4, 2, 11), $2, $3)})
 
-define(input_dcc_complements,
-       {ifelse($1, {}, {}, input_dcc_complement(substr($1, 0, 1))
-                           {input_dcc_complements(substr($1, 1))})})
+define(cmp_event_to_acc,
+       {eval({0b}eval($2, 1) - {0b}event_to_acc($1, 0, $2), 2, $2)})
 
-define(input_dcc_preamble, input_dcc_bits(eval(14, 1)))
-
-define(input_dcc_start,
-       -- Preamble
-       input_dcc_preamble()
-       -- Preamble End
-       input_dcc_zero)
+define(checksum, {eval({0b}$1 ^ {0b}$2, 2, 8)})
 
 define(input_dcc_basic_acc_event,
+       -- Preamble
+       input_dcc_bits(eval(14, 1){0})
        -- Byte One
-       input_dcc_one
-       input_dcc_zero
-       {input_dcc_bits(substr(eval($1 + 4, 2, 11), 3, 6))}
-       -- Byte One End
-       input_dcc_zero
+       {input_dcc_bits({10}event_to_acc($1, 3, 6){0})}
        -- Byte Two
-       input_dcc_one
-       {input_dcc_bits(eval(7 - {0b}substr(eval($1 + 4, 2, 11), 0, 3), 2, 3))}
-       -- Activation
-       input_dcc_one
-       -- Pair and Selection from Pair
-       {input_dcc_bits(substr(eval($1 + 4, 2, 11), 9, 2))}
-       {ifelse($2, Off, input_dcc_zero, input_dcc_one)}
-       -- Byte Two End
-       input_dcc_zero)
+       {input_dcc_bits({1}cmp_event_to_acc($1, 3){1}event_to_acc($1, 9, 2)ifelse($2, Off, 0, 1){0})}
+      -- Checksum
+       {input_dcc_bits(checksum({10}event_to_acc($1, 3, 6),
+                       {1}cmp_event_to_acc($1, 3){1}event_to_acc($1, 9, 2)ifelse($2, Off, 0, 1)))}
+       -- End of Packet
+       input_dcc_one)
 
 divert(0)dnl
