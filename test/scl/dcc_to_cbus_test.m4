@@ -1,6 +1,6 @@
 set_test_name()
 
-beginning_of_test(30)
+beginning_of_test(300)
     begin_test
       --
       configure_can
@@ -13,5 +13,6 @@ beginning_of_test(30)
       end if;
       --
       input_dcc_basic_acc(760)
+      tx_wait_for_node_message(OPC_ASON, 0, 0, 0, EN high, 760, EN low)
       --
 end_of_test

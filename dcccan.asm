@@ -28,7 +28,7 @@
 ;                          RA3| 5     24|RB3 <- CANRx                 *
 ;                          RA4| 6     23|RB2 -> CANTx                 *
 ;     Setup push button -> RA5| 7     22|RB1                          *
-;                    0V -> VSS| 8     21|RB0 <- DCC                   *
+;                    0V -> VSS| 8     21|RB0(INT0) <- DCC             *
 ;                    Resonator| 9     20|VDD <- +5V                   *
 ;                    Resonator|10     19|VSS <- 0V                    *
 ;                          RC0|11     18|RC7                          *
@@ -105,10 +105,7 @@ BETA      equ 1            ; Firmware beta version (numeric, 0 = Release)
 
 MAXIMUM_NUMBER_OF_CAN_IDS  equ 100  ; Maximum CAN Ids allowed in a CAN segment
 
-RESET_VECTOR         equ 0x0800
-HIGH_INT_VECTOR      equ 0x0808
 NODE_TYPE_PARAMETER  equ 0x0810
-LOW_INT_VECTOR       equ 0x0818
 NODE_PARAMETERS      equ 0x0820
 EEPROM_DATA          equ 0xF00000
 BOOTLOAD_EE          equ 0xF000FE
@@ -146,28 +143,17 @@ SLIM_LED_BIT   equ 7  ; Green LED
 ;**********************************************************************
 ; Start of program code
 
-  org   RESET_VECTOR
-load_address
-  nop           ;for debug
-  goto  initialisation
-
-  org   HIGH_INT_VECTOR
-  goto  high_priority_interrupt_routine
-
   org  NODE_TYPE_PARAMETER     ; Node type parameter
 node_type_name
   db  "DCCCAN "
-
-  org   LOW_INT_VECTOR
-  goto  low_priority_interrupt_routine
 
   org  NODE_PARAMETERS
 node_parameters
   db  MANUFACTURER_ID, FIRMWARE_MINOR_VERSION, MODULE_TYPE
   db  NUMBER_OF_EVENTS, VARIABLES_PER_EVENT, NUMBER_OF_NODE_VARIABLES
   db  FIRMWARE_MAJOR_VERSION, NODE_FLAGS, CPU_TYPE, PB_CAN
-  dw  RESET_VECTOR  ; Load address for module code above bootloader
-  dw  0             ; Top 2 bytes of 32 bit address not used
+  dw  initialisation        ; Load address for module code above bootloader
+  dw  0                     ; Top 2 bytes of 32 bit address not used
   db  0, 0, 0, 0, CPUM_MICROCHIP, BETA
 
 unused_node_parameters
@@ -187,8 +173,8 @@ NODE_PARAMETER_CHECKSUM  set NODE_PARAMETER_CHECKSUM + CPU_TYPE
 NODE_PARAMETER_CHECKSUM  set NODE_PARAMETER_CHECKSUM + PB_CAN
 NODE_PARAMETER_CHECKSUM  set NODE_PARAMETER_CHECKSUM + high node_type_name
 NODE_PARAMETER_CHECKSUM  set NODE_PARAMETER_CHECKSUM + low node_type_name
-NODE_PARAMETER_CHECKSUM  set NODE_PARAMETER_CHECKSUM + high RESET_VECTOR
-NODE_PARAMETER_CHECKSUM  set NODE_PARAMETER_CHECKSUM + low RESET_VECTOR
+NODE_PARAMETER_CHECKSUM  set NODE_PARAMETER_CHECKSUM + high initialisation
+NODE_PARAMETER_CHECKSUM  set NODE_PARAMETER_CHECKSUM + low initialisation
 NODE_PARAMETER_CHECKSUM  set NODE_PARAMETER_CHECKSUM + NODE_PARAMETER_COUNT
 
   org  AFTER_NODE_PARAMETERS
@@ -202,12 +188,12 @@ parameter_checksum
 
 
 ;**********************************************************************
-high_priority_interrupt_routine
+high_priority_interrupt
   retfie
 
 
 ;**********************************************************************
-low_priority_interrupt_routine
+low_priority_interrupt
   retfie
 
 
@@ -240,11 +226,11 @@ initialisation
   movwf   TRISA
 
   clrf    PORTB
-  movlw   b'00001001'       ; PortB bit 0 (RB0), DCC input
-                            ;       bit 2 (RB2), CAN Tx output
-                            ;       bit 3 (RB3), CAN Rx input
-                            ;       bit 6 (RB6), Yellow (FLiM) LED output
-                            ;       bit 7 (RB7), Green (SLiM) LED output
+  movlw   b'00001001'       ; PortB: bit 0 (RB0), DCC input
+                            ;        bit 2 (RB2), CAN Tx output
+                            ;        bit 3 (RB3), CAN Rx input
+                            ;        bit 6 (RB6), Yellow (FLiM) LED output
+                            ;        bit 7 (RB7), Green (SLiM) LED output
                             ; Pullups enabled on PORTB inputs
   movwf   TRISB
   Set_FLiM_LED_Off
@@ -322,9 +308,27 @@ can_normal_wait
 
   movlb   0                 ; CAN setup complete, select RAM bank 0
 
+  clrf    TMR0H
+  clrf    TMR0L
+  movlw   b'10001001'       ; Timer 0: Enabled
+                            ;          16 bit
+                            ;          Clock source internal (Fosc/4)
+                            ;          Prescaler assigned, 1:4
+  movwf   T0CON
+
 slim_setup
   Set_FLiM_LED_Off
   Set_SLiM_LED_On
+
+  bsf     RCON, IPEN        ; Enable interrupt priority levels
+  clrf    INTCON3
+  clrf    INTCON2           ; INT0 interrupt on falling edge
+  movlw   b'10010000'       ; Enable high priority interrupts
+                            ; Disable low priority peripheral interrupts
+                            ; Disable TMR0 overflow interrupt
+                            ; Enable INT0 external interrupt
+                            ; Disable Port B change interrupt
+  movwf   INTCON
 
   ; Drop through to main_loop
 
