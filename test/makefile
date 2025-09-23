@@ -19,6 +19,11 @@ scl_incs := $(wildcard $(scl_dir)/*.m4i)
 scl_m4s := $(wildcard $(scl_dir)/*.m4)
 scl_m4f := $(scl_dir)/base.m4f
 
+.PHONE: build_and_test
+build_and_test:
+	@cd .. && $(MAKE)
+	@$(MAKE) test
+
 test: $(logs)
 	@echo
 	@grep -e 'Error: ' -e 'Failed to parse SCL' $(log_dir)/*_test.log|sort
@@ -29,7 +34,7 @@ test: $(logs)
 .PHONY: run
 run:
 	@rm -f $(log_dir)/*.log
-	@$(MAKE) test
+	@$(MAKE) build_and_test
 
 $(logs): $(log_dir)/%.log: $(mdb_dir)/%.mdb $(scl_dir)/%.scl $(cof_dir)/*.production.cof | $(log_dir)
 	@-mdb $< > $@ 2>&1
