@@ -133,6 +133,11 @@ DCC_PREAMBLE_COUNT  equ 10
 #define  DCC_BAD_PACKET_FLAG dcc_rx_status, 6
 #define  DCC_PREAMBLE_FLAG   dcc_rx_status, 5
 
+DCC_BYTE1_MASK      equ b'11000000'
+DCC_BYTE1_TEST      equ b'10000000'
+DCC_BYTE2_MASK      equ b'10000000'
+DCC_BYTE2_TEST      equ b'10000000'
+
   nolist
   include   "cbuslib/boot_loader.inc"
   list
@@ -501,6 +506,21 @@ rx_dcc_byte_3
   movf    dcc_rx_byte_1, W
   xorwf   dcc_rx_byte_2, W
   xorwf   dcc_rx_register, W
+
+  btfss   STATUS, Z         ; Skip if checksum verification passes
+  goto    no_dcc_rx
+
+  movlw   DCC_BYTE1_MASK
+  andwf   dcc_rx_byte_1, W
+  xorlw   DCC_BYTE1_TEST
+  btfss   STATUS, Z         ; Skip if first byte verification passes
+  goto    no_dcc_rx
+
+  movlw   DCC_BYTE2_MASK
+  andwf   dcc_rx_byte_2, W
+  xorlw   DCC_BYTE2_TEST
+  btfss   STATUS, Z         ; Skip if second byte verification passes
+  goto    no_dcc_rx
 
 no_dcc_rx
   btfss   DCC_BAD_PACKET_FLAG
