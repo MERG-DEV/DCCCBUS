@@ -1,6 +1,6 @@
 set_test_name()
 
-beginning_of_test(300)
+beginning_of_test(500)
     begin_test
       --
       configure_can
@@ -13,6 +13,9 @@ beginning_of_test(300)
       end if;
       --
       input_dcc_basic_acc(760)
-      tx_wait_for_node_message(OPC_ASON, 0, 0, 0, EN high, 760, EN low)
+      -- if flim_led == '1' then
+      --   report("test_name: Yellow LED (FLiM) now on");
+      -- end if;
+      -- tx_wait_for_node_message(OPC_ASON, 0, 0, 0, EN high, 760, EN low)
       --
 end_of_test

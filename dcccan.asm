@@ -125,7 +125,13 @@ SLIM_LED_BIT   equ 7  ; Green LED
 #define  Set_SLiM_LED_On  bsf SLiM_LED
 #define  Set_SLiM_LED_Off bcf SLiM_LED
 
-#define  SETUP_INP    PORTA,5 ; Setup Switch
+#define  SETUP_INPUT PORTA, 5 ; Setup Switch
+#define  DCC_INPUT   PORTB,INT0
+
+DCC_PREAMBLE_COUNT  equ 10
+#define  DCC_RX_FLAG         dcc_rx_status, 7
+#define  DCC_BAD_PACKET_FLAG dcc_rx_status, 6
+#define  DCC_PREAMBLE_FLAG   dcc_rx_status, 5
 
   nolist
   include   "cbuslib/boot_loader.inc"
@@ -135,6 +141,24 @@ SLIM_LED_BIT   equ 7  ; Green LED
 ;**********************************************************************
 ; Variable definitions
 
+  CBLOCK  ; Follow on from boot loader RAM, which starts at 0
+
+  ; Store for register values during high priority interrput
+  hpint_STATUS
+  hpint_W
+
+  dcc_preamble_downcounter
+  dcc_byte_bit_downcounter
+  dcc_rx_shift_register
+  dcc_rx_register
+  dcc_rx_status             ; bit 7 - Rx byte ready
+                            ; bit 6 - Bad packet
+                            ; bit 5 - Waiting for end of preamble
+  dcc_rx_byte_count
+  dcc_rx_byte_1
+  dcc_rx_byte_2
+
+  ENDC
 
 ;**********************************************************************
 ; EEPROM initialisation
@@ -189,11 +213,121 @@ parameter_checksum
 
 ;**********************************************************************
 high_priority_interrupt
+  btfss   INTCON, INT0IF
+  bra     skip_high_priority_interrupt
+
+  ; Protect register values during interrupt
+  movff   STATUS, hpint_STATUS
+  movwf   hpint_W
+
+  ; DCC input has changed
+  btfss   DCC_INPUT
+  bra     end_of_dcc_bit
+
+start_of_dcc_bit
+  bcf     INTCON2, INTEDG0  ; Next interrupt on falling edge, end of DCC bit
+
+  ; Initialise bit duration timing
+  clrf    TMR0H
+  movlw   1                 ; Adjust for interrupt processing latencies
+  movwf   TMR0L
+  bsf     T0CON, TMR0ON     ; Enable Timer 0
+  bra     exit_dcc_bit
+
+end_of_dcc_bit
+  bsf     INTCON2, INTEDG0  ; Next interrupt on rising edge, start of DCC bit
+
+  bcf     T0CON, TMR0ON     ; Stop Timer 0
+
+  movf    TMR0L, F          ; Read TMR0L in order to update TMR0H
+
+  movlw   high (120000 + 1)
+  cpfslt  TMR0H
+  bra     bad_dcc_packet    ; Longer than allowed for 0 half bit
+
+  movf    TMR0H, F
+  btfss   STATUS, Z
+  bra     seen_dcc_zero     ; Longer than 255 uSec so must be 0 half bit
+
+  movlw   low (90 - 1)
+  cpfsgt  TMR0L
+  bra     not_dcc_zero      ; Shorter than 90 uSec so cannot be 0 half bit
+
+seen_dcc_zero
+  movf    dcc_preamble_downcounter, F
+  btfss   STATUS, Z
+  bra     bad_dcc_packet    ; Zero received whilst expecting preamble
+
+  bcf     STATUS, C
+  movf    dcc_byte_bit_downcounter, F
+  btfss   STATUS, Z
+  bra     shift_dcc_bit_into_byte
+
+  ; Start of new byte
+  bcf     DCC_PREAMBLE_FLAG
+  movlw   8
+  movwf   dcc_byte_bit_downcounter
+  bra     exit_dcc_bit
+
+not_dcc_zero
+  movlw   low (64 + 1)
+  cpfslt  TMR0L
+  bra     bad_dcc_packet    ; Longer than allowed for 1 half bit
+
+  movlw   low (52 - 1)
+  cpfsgt  TMR0L
+  bra     bad_dcc_packet    ; Shorter than 52 uSec so cannot be 1 half bit
+
+seen_dcc_one
+  btfss   DCC_PREAMBLE_FLAG
+  bra     not_dcc_preamble
+
+  decf    dcc_preamble_downcounter, W
+  btfsc   STATUS, C         ; Avoid underflow from zero
+  movwf   dcc_preamble_downcounter
+  bra     exit_dcc_bit
+
+not_dcc_preamble
+  bsf     STATUS, C
+  movf    dcc_byte_bit_downcounter, F
+  btfsc   STATUS, Z
+  bra     end_dcc_packet
+
+shift_dcc_bit_into_byte
+  rlcf    dcc_rx_shift_register, F
+  decfsz  dcc_byte_bit_downcounter, F
+  bra     exit_dcc_bit
+
+  ; End of byte reception
+  movff   dcc_rx_shift_register, dcc_rx_register
+  bsf     DCC_RX_FLAG
+  bra     exit_dcc_bit
+
+bad_dcc_packet
+  bsf     DCC_BAD_PACKET_FLAG
+
+end_dcc_packet
+  bsf     DCC_PREAMBLE_FLAG
+  movlw   DCC_PREAMBLE_COUNT
+  movwf   dcc_preamble_downcounter
+  clrf    dcc_byte_bit_downcounter
+
+exit_dcc_bit
+  bcf     INTCON, INT0IF    ; Re-enable INT0 interrupts
+
+
+exit_high_priority_interrupt
+  ; Restore register values protected during interrupt
+  movf    hpint_W, W
+  movff   hpint_STATUS, STATUS
+
+skip_high_priority_interrupt
   retfie
 
 
 ;**********************************************************************
 low_priority_interrupt
+exit_low_priority_interrupt
   retfie
 
 
@@ -216,31 +350,29 @@ initialisation
   lfsr    FSR0, 0x200       ; Clear data memeory bank 2
   call    ram_clear_loop
 
-  ; Turn off Port A A/D, all bits digital I/O
+  ; Turn off  A/D, all bits digital I/O
   clrf    ADCON0
   movlw   b'00001111'
   movwf   ADCON1
 
-  clrf    PORTA
+  clrf    LATA
   movlw   b'00100000'       ; PortA bit 5 (RA5), setup pushbutton input
   movwf   TRISA
 
-  clrf    PORTB
-  movlw   b'00001001'       ; PortB: bit 0 (RB0), DCC input
-                            ;        bit 2 (RB2), CAN Tx output
-                            ;        bit 3 (RB3), CAN Rx input
+  clrf    LATB
+  movlw   b'00001001'       ; PortB: bit 7 (RB7), Green (SLiM) LED output
                             ;        bit 6 (RB6), Yellow (FLiM) LED output
-                            ;        bit 7 (RB7), Green (SLiM) LED output
-                            ; Pullups enabled on PORTB inputs
+                            ;        bit 3 (RB3), CAN Rx input
+                            ;        bit 2 (RB2), CAN Tx output
+                            ;        bit 0 (RB0), DCC input
   movwf   TRISB
   Set_FLiM_LED_Off
   Set_SLiM_LED_Off
   bsf     LATB,CANTX        ; Initialise CAN Tx as recessive
 
-  clrf    PORTC
+  clrf    LATC
   clrf    TRISC             ; Port C all outputs
 
-  bsf     RCON, IPEN        ; Enable interrupt priority levels
   clrf    EECON1            ; Disable accesses to program memory
 
   banksel CANCON
@@ -308,21 +440,25 @@ can_normal_wait
 
   movlb   0                 ; CAN setup complete, select RAM bank 0
 
-  clrf    TMR0H
-  clrf    TMR0L
-  movlw   b'10001001'       ; Timer 0: Enabled
+  movlw   b'00000001'       ; Timer 0: Stopped
                             ;          16 bit
-                            ;          Clock source internal (Fosc/4)
-                            ;          Prescaler assigned, 1:4
+                            ;          Internal, 0.25 uSec, clock (Fosc/4)
+                            ;          Assign 1:4 prescaler, 1 uSec tick
   movwf   T0CON
 
 slim_setup
   Set_FLiM_LED_Off
   Set_SLiM_LED_On
 
+  bsf     DCC_PREAMBLE_FLAG
+  movlw   DCC_PREAMBLE_COUNT
+  movwf   dcc_preamble_downcounter
+
   bsf     RCON, IPEN        ; Enable interrupt priority levels
   clrf    INTCON3
-  clrf    INTCON2           ; INT0 interrupt on falling edge
+  clrf    INTCON2           ; Pullups enabled on PORTB inputs
+                            ; INT0 interrupt on falling edge
+
   movlw   b'10010000'       ; Enable high priority interrupts
                             ; Disable low priority peripheral interrupts
                             ; Disable TMR0 overflow interrupt
@@ -336,7 +472,45 @@ slim_setup
 ;**********************************************************************
 main_loop
   clrwdt
-  goto  main_loop
+
+  btfss   DCC_RX_FLAG
+  goto    no_dcc_rx
+
+  bcf     DCC_RX_FLAG
+  movf    dcc_rx_byte_count, F
+  btfss   STATUS, Z
+  bra     rx_dcc_byte_2
+
+rx_dcc_byte_1
+  movff   dcc_rx_register, dcc_rx_byte_1
+  incf    dcc_rx_byte_count, F
+  goto    main_loop
+
+rx_dcc_byte_2
+  decf    dcc_rx_byte_count, W
+  btfss   STATUS, Z
+  bra     rx_dcc_byte_3
+
+  movff   dcc_rx_register, dcc_rx_byte_2
+  incf    dcc_rx_byte_count, F
+  goto    main_loop
+
+rx_dcc_byte_3
+  clrf    dcc_rx_byte_count
+
+  movf    dcc_rx_byte_1, W
+  xorwf   dcc_rx_byte_2, W
+  xorwf   dcc_rx_register, W
+
+no_dcc_rx
+  btfss   DCC_BAD_PACKET_FLAG
+  goto    end_dcc_rx
+
+  bcf     DCC_BAD_PACKET_FLAG
+  clrf    dcc_rx_byte_count
+
+end_dcc_rx
+  goto    main_loop
 
 
 ;**********************************************************************
