@@ -246,7 +246,7 @@ end_of_dcc_bit
 
   movf    TMR0L, F          ; Read TMR0L in order to update TMR0H
 
-  movlw   high (120000 + 1)
+  movlw   high (10000 + 1)
   cpfslt  TMR0H
   bra     bad_dcc_packet    ; Longer than allowed for 0 half bit
 
