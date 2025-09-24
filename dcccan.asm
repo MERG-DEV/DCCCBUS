@@ -163,6 +163,10 @@ DCC_BYTE2_TEST      equ b'10000000'
   dcc_rx_byte_1
   dcc_rx_byte_2
 
+  dcc_event_opcode
+  dcc_event_num_low
+  dcc_event_num_high
+
   ENDC
 
 ;**********************************************************************
@@ -521,6 +525,47 @@ rx_dcc_byte_3
   xorlw   DCC_BYTE2_TEST
   btfss   STATUS, Z         ; Skip if second byte verification passes
   goto    no_dcc_rx
+
+  ; Decode accessory output address
+  ;
+  ; 10AAAAAA 1aaaCDDd
+  ;   ++++++  ||| |||  DCC address bits 5 to 0 (Acc 8 - 3)
+  ;           +++ |||  DCC address bits 8 to 6 (Acc 11 - 9), one's complemented
+  ;               ++|  Accessory output pair index (Acc 2 - 1), range 0 to 3
+  ;                 +  Accessory indexed pair output (Acc 0), range 0 to 1
+  ;
+  ; DCC address       = 000a aaAA AAAA
+  ; Accessory address = aaaA AAAA ADDd
+  ; Event nummber     = 0aaa AAAA AADD - 0100
+
+  movlw   OPC_ASOF          ; Activating first output of a pair = ASOF
+  btfsc   dcc_rx_byte_2, 0
+  movlw   OPC_ASON          ; Activating second output of a pair = ASON
+  movwf   dcc_event_opcode
+
+  swapf   dcc_rx_byte_2, W
+  andlw   b'00000111'
+  xorlw   b'00000111'
+  movwf   dcc_event_num_high
+
+  rlncf   dcc_rx_byte_1, F
+  rlncf   dcc_rx_byte_1, W
+  andlw   b'11111100'
+  movwf   dcc_event_num_low
+
+  rrncf   dcc_rx_byte_2, W
+  andlw   b'00000011'
+  iorwf   dcc_event_num_low, F
+
+  ; Event number now 0000 0aaa AAAA AADD
+
+  ; DCC addressing must start at 1, which maps to event number 4
+  movlw   4
+  subwf   dcc_event_num_low, F
+  btfss   STATUS, C             ; Skip if no underflow on low byte ...
+  decf    dcc_event_num_high, F ; ... else borrow from high byte
+
+  goto    end_dcc_rx
 
 no_dcc_rx
   btfss   DCC_BAD_PACKET_FLAG
