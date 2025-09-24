@@ -21,8 +21,8 @@ scl_m4f := $(scl_dir)/base.m4f
 
 .PHONE: build_and_test
 build_and_test:
-	@cd .. && $(MAKE)
-	@$(MAKE) test
+	@cd .. && $(MAKE) --silent
+	@$(MAKE) --silent test
 
 test: $(logs)
 	@echo
@@ -34,7 +34,7 @@ test: $(logs)
 .PHONY: run
 run:
 	@rm -f $(log_dir)/*.log
-	@$(MAKE) build_and_test
+	@$(MAKE) --silent build_and_test
 
 $(logs): $(log_dir)/%.log: $(mdb_dir)/%.mdb $(scl_dir)/%.scl $(cof_dir)/*.production.cof | $(log_dir)
 	@-mdb $< > $@ 2>&1
