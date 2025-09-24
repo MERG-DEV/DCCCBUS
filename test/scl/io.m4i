@@ -85,7 +85,7 @@ define(input_dcc_bits,
        {ifelse($1, {}, {}, input_dcc_bit(substr($1, 0, 1))
                            {input_dcc_bits(substr($1, 1))})})
 
-define(event_to_acc, {substr(eval($1 + 4, 2, 12), $2, $3)})
+define(event_to_acc, {substr(eval($1 + 8, 2, 12), $2, $3)})
 
 define(cmp_event_to_acc,
        {eval({0b}eval($2, 1) - {0b}event_to_acc($1, 0, $2), 2, $2)})
@@ -110,14 +110,9 @@ define(_input_dcc_basic_acc,
        -- End of Packet
        input_dcc_one)
 
-define(input_dcc_basic_acc_on, {_input_dcc_basic_acc(14, $1, On)})
+define(input_dcc_basic_acc, {_input_dcc_basic_acc(14, $1, $2)})
 
-define(input_dcc_basic_acc_off, {_input_dcc_basic_acc(14, $1, Off)})
-
-define(input_dcc_basic_acc_first_of_pair,
-       {input_dcc_basic_on(eval($1 << 2))})
-
-define(input_dcc_basic_acc_second_of_pair,
-       {input_dcc_basic_acc_on(eval(($1 << 2) + 1))})
+define(input_dcc_basic_acc_pair,
+       {input_dcc_basic_acc(eval(($1 << 1) ifelse($2, On, + 1)), $2)})
 
 divert(0)dnl
