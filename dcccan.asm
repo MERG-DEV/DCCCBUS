@@ -526,40 +526,44 @@ rx_dcc_byte_3
   btfss   STATUS, Z         ; Skip if second byte verification passes
   goto    no_dcc_rx
 
-  ; Decode accessory output address
+  ; Decode simple accessory decoder output address from RCN-213
   ;
   ; 10AAAAAA 1aaaCDDd
-  ;   ++++++  ||| |||  DCC address bits 5 to 0 (Acc 8 - 3)
-  ;           +++ |||  DCC address bits 8 to 6 (Acc 11 - 9), one's complemented
-  ;               ++|  Accessory output pair index (Acc 2 - 1), range 0 to 3
-  ;                 +  Accessory indexed pair output (Acc 0), range 0 to 1
+  ;   ||||||  +++ |||  DCC address bits 8 to 6 (Acc 10 - 8), one's complemented
+  ;   ++++++      |||  DCC address bits 5 to 0 (Acc 7 - 2)
+  ;               ++|  Accessory output pair index (Acc 1 - 0), range 0 to 3
+  ;                 +  Accessory indexed pair output, range 0 to 1
   ;
-  ; DCC address       = 000a aaAA AAAA
-  ; Accessory address = aaaA AAAA ADDd
-  ; Event nummber     = 0aaa AAAA AADD - 0100
+  ; DCC base address   (9 bits)   = 000a aaAA AAAA
+  ; Accessory address (11 bits)   = 0aaa AAAA AADD
+  ; Output address    (12 bits)   = aaaA AAAA ADDd
+  ; Event nummber, toggling pairs = Accessory address - b'0100' (8)
 
-  movlw   OPC_ASOF          ; Activating first output of a pair = ASOF
-  btfsc   dcc_rx_byte_2, 0
-  movlw   OPC_ASON          ; Activating second output of a pair = ASON
-  movwf   dcc_event_opcode
-
+  ; aaa
   swapf   dcc_rx_byte_2, W
   andlw   b'00000111'
   xorlw   b'00000111'
   movwf   dcc_event_num_high
 
+  ; AA AAAA
   rlncf   dcc_rx_byte_1, F
   rlncf   dcc_rx_byte_1, W
   andlw   b'11111100'
   movwf   dcc_event_num_low
 
+  ; DD
   rrncf   dcc_rx_byte_2, W
   andlw   b'00000011'
   iorwf   dcc_event_num_low, F
 
-  ; Event number now 0000 0aaa AAAA AADD
+  ; d
+  movlw   OPC_ASOF
+  btfsc   dcc_rx_byte_2, 0  ; d = 0, activate first output of a pair = ASOF
+  movlw   OPC_ASON          ; d = 1, activate second output of a pair = ASON
+  movwf   dcc_event_opcode
 
-  ; DCC addressing must start at 1, which maps to event number 4
+  ; Event number now 0000 0aaa AAAA AADD (accessory address)
+  ; DCC addresses start at 1, map this to event number 0
   movlw   4
   subwf   dcc_event_num_low, F
   btfss   STATUS, C             ; Skip if no underflow on low byte ...
