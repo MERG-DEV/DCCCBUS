@@ -437,6 +437,11 @@ clear_rx_masks_loop
   cpfseq  FSR0L
   bra     clear_rx_masks_loop
 
+  movlw b'10111111'
+  movwf TXB1SIDH
+  movlw b'11100000'
+  movwf TXB1SIDL
+
   clrf    CANCON            ; Request CAN module normal mode
 
 can_normal_wait
@@ -568,6 +573,20 @@ rx_dcc_byte_3
   subwf   dcc_event_num_low, F
   btfss   STATUS, C             ; Skip if no underflow on low byte ...
   decf    dcc_event_num_high, F ; ... else borrow from high byte
+
+  banksel TXB1D0
+
+  btfsc   TXB1CON, TXREQ
+  goto    end_dcc_rx
+
+  movff   dcc_event_opcode, TXB1D0
+  clrf    TXB1D1
+  clrf    TXB1D2
+  movff   dcc_event_num_high, TXB1D3
+  movff   dcc_event_num_low, TXB1D4
+  movlw   5
+  movwf   TXB1DLC
+  bsf     TXB1CON, TXREQ
 
   goto    end_dcc_rx
 
