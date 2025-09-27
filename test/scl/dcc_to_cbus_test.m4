@@ -7,11 +7,6 @@ beginning_of_test(500)
       --
       wait_until_slim -- Booted into SLiM
       --
-      if flim_led == '1' then
-        log(Yellow LED (FLiM) on)
-        test_state := fail;
-      end if;
-      --
       input_dcc_basic_acc_pair(765, Off)
       -- tx_wait_for_node_message(OPC_ASOF, 765, 0, 0, EN high, 380, EN low)
       --

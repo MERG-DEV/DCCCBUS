@@ -7,9 +7,4 @@ beginning_of_test(5)
       --
       wait_until_slim -- Booted into SLiM
       --
-      if flim_led == '1' then
-        log(Yellow LED (FLiM) on)
-        test_state := fail;
-      end if;
-      --
 end_of_test

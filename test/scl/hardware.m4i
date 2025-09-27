@@ -10,14 +10,41 @@ define(exit_learn_mode,
        wait_until_idle)
 
 define(flim_led, RB6)
+define(slim_led, RB7)
+
+define(confirm_not_flim,
+      if flim_led == '1' then
+        log(Yellow LED (FLiM) on)
+        test_state := fail;
+      end if;)
+
+define(confirm_flim,
+      if flim_led != '1' then
+        log(Yellow LED (FLiM) off)
+        test_state := fail;
+      end if;)
+
+define(confirm_not_slim,
+      if slim_led == '1' then
+        log(Green LED (SLiM) on)
+        test_state := fail;
+      end if;)
+
+define(confirm_slim,
+      if slim_led != '1' then
+        log(Green LED (SLiM) off)
+        test_state := fail;
+      end if;)
+
 define(wait_until_flim,
        wait until flim_led == '1';
-       log(Yellow LED (FLiM) on))
+       log(Yellow LED (FLiM) on)
+       confirm_not_slim)
 
-define(slim_led, RB7)
 define(wait_until_slim,
        wait until slim_led == '1';
-       log(Green LED (SLiM) on))
+       log(Green LED (SLiM) on)
+       confirm_not_flim)
 
 define(configure_can,
        if CANCON.REQOP2 != '1' then
