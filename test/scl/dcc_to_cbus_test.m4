@@ -8,7 +8,7 @@ beginning_of_test(500)
       wait_until_slim -- Booted into SLiM
       --
       if flim_led == '1' then
-        report("test_name: Yellow LED (FLiM) on");
+        log(Yellow LED (FLiM) on)
         test_state := fail;
       end if;
       --

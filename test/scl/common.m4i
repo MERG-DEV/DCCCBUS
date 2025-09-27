@@ -4,13 +4,15 @@ changequote({,})
 
 define(set_test_name, {define(test_name, patsubst(__file__, {.m4},))})
 
+define(log, {report("test_name: $1");})
+
 define(processor_type, PIC18F2480)
 
 define(timeout_process,
        test_timeout: process is
          begin
            wait for $1 ms;
-           report("test_name: TIMEOUT");
+           log(TIMEOUT)
            report(PC); -- Crashes simulator, MDB will report current source line
            stop_test
          end process test_timeout;)
@@ -31,7 +33,7 @@ define(beginning_of_test,
 
 define(begin_test,
        begin
-         report("test_name: START");
+         log(START)
          test_state := pass;)
 
 define(stop_test,
@@ -40,9 +42,9 @@ define(stop_test,
 
 define(end_of_test,
          if test_state == pass then
-           report("test_name: PASS");
+           log(PASS)
          else
-           report("test_name: FAIL");
+           log(FAIL)
          end if;
          stop_test
          end process test_name;

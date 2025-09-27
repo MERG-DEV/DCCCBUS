@@ -12,23 +12,23 @@ define(exit_learn_mode,
 define(flim_led, RB6)
 define(wait_until_flim,
        wait until flim_led == '1';
-       report("test_name: Yellow LED (FLiM) on");)
+       log(Yellow LED (FLiM) on))
 
 define(slim_led, RB7)
 define(wait_until_slim,
        wait until slim_led == '1';
-       report("test_name: Green LED (SLiM) on");)
+       log(Green LED (SLiM) on))
 
 define(configure_can,
        if CANCON.REQOP2 != '1' then
-         report("test_name: Waiting to configure CAN");
+         log(Waiting to configure CAN)
          wait until CANCON.REQOP2 == '1';
        end if;
        CANSTAT.OPMODE2 <= '1';
-       report("test_name: Configuring CAN");
+       log(Configuring CAN)
        wait until CANCON.REQOP2 == '0';
        CANSTAT.OPMODE2 <= '0';
-       report("test_name: CAN configured");)
+       log(CAN configured))
 
 define(setup_button, RA2)
 define(set_setup_off, setup_button <= '1';)

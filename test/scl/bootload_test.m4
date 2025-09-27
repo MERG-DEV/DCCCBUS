@@ -10,10 +10,10 @@ begin
     type test_result is (pass, fail);
     variable test_state : test_result;
     begin
-      report("test_name: START");
+      log(START)
       test_state := pass;
       --
       wait until PC == _CANMain;
-      report("test_name: Reached _CANMain");
+      log(Reached _CANMain)
       --
 end_of_test
