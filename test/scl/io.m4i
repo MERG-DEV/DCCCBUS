@@ -113,6 +113,6 @@ define(_input_dcc_basic_acc,
 define(input_dcc_basic_acc, {_input_dcc_basic_acc(14, $1, $2)})
 
 define(input_dcc_basic_acc_pair,
-       {input_dcc_basic_acc(eval(($1 << 1) ifelse($2, On, + 1)), $2)})
+       {input_dcc_basic_acc(eval(($1 << 1) ifelse($2, On, + 1)), On)})
 
 divert(0)dnl
