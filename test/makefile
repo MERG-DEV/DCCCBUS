@@ -60,7 +60,7 @@ $(scls): %.scl: %.m4 $(scl_m4f)
 
 .PHONY: clean
 clean:
-	rm -f $(log_dir)/*.log $(mdb_dir)/*.mdb $(scl_dir)/*.scl *.dep
+	rm -f $(log_dir)/*.log $(mdb_dir)/*.mdb $(scl_dir)/*.scl */*.m4f *.dep
 
 data.dep: $(scl_m4s) $(dats)
 	@rm -f $@
