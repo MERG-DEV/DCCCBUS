@@ -12,7 +12,8 @@ define(tx_test_data,
 define(tx2_wait_if_not_ready,
        if TXB2CON.TXREQ == '0' then
          {ifelse($1, {}, log(Awaiting Tx2), log(Awaiting Tx2 for $1 ms))}
-         {ifelse($1, {}, wait until TXB2CON.TXREQ == '1';, wait until TXB2CON.TXREQ == '1' for $1 ms;)}
+         {ifelse($1, {}, wait until TXB2CON.TXREQ == '1';,
+                         wait until TXB2CON.TXREQ == '1' for $1 ms;)}
        end if;
        if TXB2CON.TXREQ == '1' then
          log(Tx2)
@@ -41,7 +42,8 @@ define(tx_check_no_rtr_response,
 define(tx_wait_if_not_ready,
        if TXB1CON.TXREQ == '0' then
          {ifelse($1, {}, log(Awaiting Tx), log(Awaiting Tx for $1 ms))}
-         {ifelse($1, {}, wait until TXB1CON.TXREQ == '1';, wait until TXB1CON.TXREQ == '1' for $1 ms;)}
+         {ifelse($1, {}, wait until TXB1CON.TXREQ == '1';,
+                         wait until TXB1CON.TXREQ == '1' for $1 ms;)}
        end if;
        if TXB1CON.TXREQ == '1' then
          log(Tx)
@@ -84,10 +86,14 @@ define(tx_wait_for_message,
        {tx_test_data(TXB1D7, $16,  $17)})
 
 define(tx_wait_for_node_message,
-       {tx_wait_for_message(node message, $1, Opcode, $2, Node Number (high), $3, Node Number (low), $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)})
+       {tx_wait_for_message(node message, $1, Opcode, $2, Node Number (high),
+                            $3, Node Number (low), $4, $5, $6, $7, $8, $9, $10,
+                            $11, $12, $13)})
 
 define(tx_wait_for_cmderr_message,
-       {tx_wait_for_message(command error, OPC_CMDERR, Opcode, $1, Node Number (high), $2, Node Number (low), $3, error number)})
+       {tx_wait_for_message(command error, OPC_CMDERR, Opcode,
+                            $1, Node Number (high), $2, Node Number (low),
+                            $3, error number)})
 
 define(tx_rtr,
        tx_wait_if_not_ready
