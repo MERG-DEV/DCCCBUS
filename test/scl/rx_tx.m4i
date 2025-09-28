@@ -164,6 +164,14 @@ define(rx_data_file_event,
        read(data_file, RXB0D4, 1); -- Event low
        rx_frame(5))
 
+define(enter_learn_mode,
+       rx_data(OPC_NNLRN, $1, $2) -- NNLRN, CBUS enter learn mode
+       wait_until_idle)
+
+define(exit_learn_mode,
+       rx_data(OPC_NNULN, $1, $2) -- NNULN, CBUS exit learn mode
+       wait_until_idle)
+
 define(rx_data_file_unlearn,
        RXB0D0 <= OPC_EVULN; -- Opcode
        read(data_file, RXB0D1, 1); -- Node high

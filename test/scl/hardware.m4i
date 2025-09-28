@@ -1,13 +1,9 @@
 divert(-1)
-define(wait_until_idle;)
 
-define(enter_learn_mode,
-       rx_data(OPC_NNLRN, $1, $2) -- NNLRN, CBUS enter learn mode
-       wait_until_idle)
+define(wait_until_idle, {--})
 
-define(exit_learn_mode,
-       rx_data(OPC_NNULN, $1, $2) -- NNULN, CBUS exit learn mode
-       wait_until_idle)
+-- 16MHz clock = 4 instruction cycles per microsecond
+define(u_sec, {eval($1 * 4)} ic)
 
 define(flim_led, RB6)
 define(slim_led, RB7)
