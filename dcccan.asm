@@ -168,6 +168,9 @@ DCC_BYTE2_TEST      equ b'10000000'
   dcc_event_num_high
 
   ENDC
+#if (0xFF) < (dcc_event_num_high)
+    error "RAM allocation beyond end of Bank 0"
+#endif
 
 ;**********************************************************************
 ; EEPROM initialisation
