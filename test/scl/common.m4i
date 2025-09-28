@@ -50,4 +50,7 @@ define(end_of_test,
          end process test_name;
        end testbench;)
 
+define(low_byte, {eval(0xFF & $1)})
+define(high_byte, {eval(0xFF & ($1 >> 8))})
+
 divert(0)dnl
