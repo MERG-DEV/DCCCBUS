@@ -129,14 +129,15 @@ SLIM_LED_BIT   equ 7  ; Green LED
 #define  DCC_INPUT   PORTB,INT0
 
 DCC_PREAMBLE_COUNT  equ 10
-#define  DCC_RX_FLAG         dcc_rx_status, 7
-#define  DCC_BAD_PACKET_FLAG dcc_rx_status, 6
-#define  DCC_PREAMBLE_FLAG   dcc_rx_status, 5
+#define  DCC_NEW_RX_FLAG     dcc_rx_status, 7
+#define  DCC_NEW_PACKET_FLAG dcc_rx_status, 6
+#define  DCC_BAD_PACKET_FLAG dcc_rx_status, 5
+#define  DCC_PREAMBLE_FLAG   dcc_rx_status, 4
 
-DCC_BYTE1_MASK      equ b'11000000'
-DCC_BYTE1_TEST      equ b'10000000'
-DCC_BYTE2_MASK      equ b'10000000'
-DCC_BYTE2_TEST      equ b'10000000'
+DCC_ACC_BYTE1_MASK    equ b'11000000'
+DCC_ACC_BYTE1_TEST    equ b'10000000'
+DCC_BASIC_BYTE2_MASK  equ b'10000000'
+DCC_BASIC_BYTE2_TEST  equ b'10000000'
 
   nolist
   include   "cbuslib/boot_loader.inc"
@@ -156,9 +157,10 @@ DCC_BYTE2_TEST      equ b'10000000'
   dcc_byte_bit_downcounter
   dcc_rx_shift_register
   dcc_rx_register
-  dcc_rx_status             ; bit 7 - Rx byte ready
-                            ; bit 6 - Bad packet
-                            ; bit 5 - Waiting for end of preamble
+  dcc_rx_status             ; bit 7 - New Rx byte ready
+                            ; bit 6 - New packet ready
+                            ; bit 5 - Bad packet
+                            ; bit 4 - Waiting for end of preamble
   dcc_rx_byte_count
   dcc_rx_byte_1
   dcc_rx_byte_2
@@ -272,7 +274,7 @@ seen_dcc_zero
 
   bcf     STATUS, C
   movf    dcc_byte_bit_downcounter, F
-  btfss   STATUS, Z
+  btfss   STATUS, Z         ; Skip if not receiving a byte
   bra     shift_dcc_bit_into_byte
 
   ; Start of new byte
@@ -302,17 +304,20 @@ seen_dcc_one
 not_dcc_preamble
   bsf     STATUS, C
   movf    dcc_byte_bit_downcounter, F
-  btfsc   STATUS, Z
+  btfss   STATUS, Z         ; Skip if not receiving a byte
+  bra     shift_dcc_bit_into_byte
+
+  bsf     DCC_NEW_PACKET_FLAG
   bra     end_dcc_packet
 
 shift_dcc_bit_into_byte
   rlcf    dcc_rx_shift_register, F
   decfsz  dcc_byte_bit_downcounter, F
-  bra     exit_dcc_bit
+  bra     exit_dcc_bit      ; Still receiving a byte
 
   ; End of byte reception
   movff   dcc_rx_shift_register, dcc_rx_register
-  bsf     DCC_RX_FLAG
+  bsf     DCC_NEW_RX_FLAG
   bra     exit_dcc_bit
 
 bad_dcc_packet
@@ -490,29 +495,10 @@ slim_setup
 main_loop
   clrwdt
 
-  btfss   DCC_RX_FLAG
-  goto    no_dcc_rx
+  btfss   DCC_NEW_PACKET_FLAG
+  bra     dcc_packet_end
 
-  bcf     DCC_RX_FLAG
-  movf    dcc_rx_byte_count, F
-  btfss   STATUS, Z
-  bra     rx_dcc_byte_2
-
-rx_dcc_byte_1
-  movff   dcc_rx_register, dcc_rx_byte_1
-  incf    dcc_rx_byte_count, F
-  goto    main_loop
-
-rx_dcc_byte_2
-  decf    dcc_rx_byte_count, W
-  btfss   STATUS, Z
-  bra     rx_dcc_byte_3
-
-  movff   dcc_rx_register, dcc_rx_byte_2
-  incf    dcc_rx_byte_count, F
-  goto    main_loop
-
-rx_dcc_byte_3
+  bcf     DCC_NEW_PACKET_FLAG
   clrf    dcc_rx_byte_count
 
   movf    dcc_rx_byte_1, W
@@ -520,19 +506,19 @@ rx_dcc_byte_3
   xorwf   dcc_rx_register, W
 
   btfss   STATUS, Z         ; Skip if checksum verification passes
-  goto    no_dcc_rx
+  bra     dcc_packet_end
 
-  movlw   DCC_BYTE1_MASK
+  movlw   DCC_ACC_BYTE1_MASK
   andwf   dcc_rx_byte_1, W
-  xorlw   DCC_BYTE1_TEST
+  xorlw   DCC_ACC_BYTE1_TEST
   btfss   STATUS, Z         ; Skip if first byte verification passes
-  goto    no_dcc_rx
+  bra     dcc_packet_end
 
-  movlw   DCC_BYTE2_MASK
+  movlw   DCC_BASIC_BYTE2_MASK
   andwf   dcc_rx_byte_2, W
-  xorlw   DCC_BYTE2_TEST
+  xorlw   DCC_BASIC_BYTE2_TEST
   btfss   STATUS, Z         ; Skip if second byte verification passes
-  goto    no_dcc_rx
+  bra     dcc_packet_end
 
   ; Decode simple accessory decoder output address from RCN-213
   ;
@@ -545,7 +531,8 @@ rx_dcc_byte_3
   ; DCC base address   (9 bits)   = 000a aaAA AAAA
   ; Accessory address (11 bits)   = 0aaa AAAA AADD
   ; Output address    (12 bits)   = aaaA AAAA ADDd
-  ; Event nummber, toggling pairs = Accessory address - b'0100' (8)
+  ; Event nummber, toggling pairs = Accessory address - b'0100' (4)
+  ; For toggling pairs output bit, d, not activation bit, C selects On or Off
 
   ; aaa
   swapf   dcc_rx_byte_2, W
@@ -571,7 +558,7 @@ rx_dcc_byte_3
   movwf   dcc_event_opcode
 
   ; Event number now 0000 0aaa AAAA AADD (accessory address)
-  ; DCC addresses start at 1, map this to event number 0
+  ; DCC addresses start at 1, map this to event number 0 by subtracting 4
   movlw   4
   subwf   dcc_event_num_low, F
   btfss   STATUS, C             ; Skip if no underflow on low byte ...
@@ -580,7 +567,7 @@ rx_dcc_byte_3
   banksel TXB1D0
 
   btfsc   TXB1CON, TXREQ
-  goto    end_dcc_rx
+  bra     dcc_packet_end
 
   movff   dcc_event_opcode, TXB1D0
   clrf    TXB1D1
@@ -591,17 +578,38 @@ rx_dcc_byte_3
   movwf   TXB1DLC
   bsf     TXB1CON, TXREQ
 
-  goto    end_dcc_rx
+dcc_packet_end
+
+  btfss   DCC_NEW_RX_FLAG
+  bra     no_dcc_rx
+
+  bcf     DCC_NEW_RX_FLAG
+
+  movf    dcc_rx_byte_count, F
+  btfss   STATUS, Z
+  bra     rx_second_dcc_byte
+
+  movff   dcc_rx_register, dcc_rx_byte_1
+  incf    dcc_rx_byte_count, F
+  bra     no_dcc_rx
+
+rx_second_dcc_byte
+  decf    dcc_rx_byte_count,W
+  btfss   STATUS, Z
+  bra     no_dcc_rx
+
+  movff   dcc_rx_register, dcc_rx_byte_2
+  incf    dcc_rx_byte_count, F
 
 no_dcc_rx
   btfss   DCC_BAD_PACKET_FLAG
-  goto    end_dcc_rx
+  bra     end_dcc_rx
 
   bcf     DCC_BAD_PACKET_FLAG
-  clrf    dcc_rx_byte_count
+  clrf    dcc_rx_byte_count ; Packet was bad so ignore bytes received
 
 end_dcc_rx
-  goto    main_loop
+  bra     main_loop
 
 
 ;**********************************************************************
