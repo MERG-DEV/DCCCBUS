@@ -37,21 +37,25 @@ define(basic_acc_byte_2,
 
 define(_input_dcc_basic_acc,
        -- Preamble
-       {input_dcc_bits(eval($1, 1))}
+       {input_dcc_bits($1)}
        -- Byte One
        input_dcc_zero
-       {input_dcc_bits(acc_byte_1($2))}
+       {input_dcc_bits($2)}
        -- Byte Two
        input_dcc_zero
-       {input_dcc_bits(basic_acc_byte_2($2, $3))}
+       {input_dcc_bits($3)}
       -- Checksum
        input_dcc_zero
-       {input_dcc_bits(checksum(acc_byte_1($2),
-                                basic_acc_byte_2($2, $3)))}
+       {input_dcc_bits($4)}
        -- End of Packet
        input_dcc_one)
 
-define(input_dcc_basic_acc, {_input_dcc_basic_acc(14, $1, $2)})
+define(input_dcc_basic_acc,
+       {_input_dcc_basic_acc(eval(14, 1),
+                             acc_byte_1($1),
+                             basic_acc_byte_2($1, $2),
+                             checksum(acc_byte_1($1),
+                                      basic_acc_byte_2($1, $2)))})
 
 define(input_dcc_basic_acc_pair,
        {input_dcc_basic_acc(eval(($1 << 1) ifelse($2, On, + 1)), On)})
@@ -64,32 +68,28 @@ define(input_dcc_basic_too_long_acc,
        {input_dcc_bits(acc_byte_1(1))}
        -- Byte Two
        input_dcc_zero
-       {input_dcc_bits(basic_acc_byte_2(2, On))}
+       {input_dcc_bits(basic_acc_byte_2(1, On))}
        -- Byte Three
        input_dcc_zero
        {input_dcc_bits(01010101)}
      -- Checksum
        input_dcc_zero
-       {input_dcc_bits(checksum(acc_byte_1(1), checksum(basic_acc_byte_2(2, On),
+       {input_dcc_bits(checksum(acc_byte_1(1), checksum(basic_acc_byte_2(1, On),
                                                         01010101)))}
        -- End of Packet
        input_dcc_one)
 
 define(input_dcc_basic_bad_checksum_acc,
-       -- Preamble
-       {input_dcc_bits(eval(14, 1))}
-       -- Byte One
-       input_dcc_zero
-       {input_dcc_bits(acc_byte_1(1))}
-       -- Byte Two
-       input_dcc_zero
-       {input_dcc_bits(basic_acc_byte_2(2, On))}
-     -- Checksum
-       input_dcc_zero
-       {input_dcc_bits(01010101)}
-       -- End of Packet
-       input_dcc_one)
+       {_input_dcc_basic_acc(eval(14, 1),
+                             acc_byte_1(1),
+                             basic_acc_byte_2(1, On),
+                             01010101)})
 
 define(input_dcc_basic_short_preamble_acc, {_input_dcc_basic_acc(9, 1, On)})
+       {_input_dcc_basic_acc(eval(9, 1),
+                             acc_byte_1(1),
+                             basic_acc_byte_2(1, On),
+                             checksum(acc_byte_1(1),
+                                      basic_acc_byte_2(1, On)))})
 
 divert(0)dnl
