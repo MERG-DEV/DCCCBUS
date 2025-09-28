@@ -75,4 +75,19 @@ define(input_dcc_basic_too_long_acc,
        -- End of Packet
        input_dcc_one)
 
+define(input_dcc_basic_bad_checksum_acc,
+       -- Preamble
+       {input_dcc_bits(eval(14, 1))}
+       -- Byte One
+       input_dcc_zero
+       {input_dcc_bits(acc_byte_1(1))}
+       -- Byte Two
+       input_dcc_zero
+       {input_dcc_bits(basic_acc_byte_2(2, On))}
+     -- Checksum
+       input_dcc_zero
+       {input_dcc_bits(01010101)}
+       -- End of Packet
+       input_dcc_one)
+
 divert(0)dnl
