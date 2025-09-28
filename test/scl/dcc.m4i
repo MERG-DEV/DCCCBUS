@@ -85,7 +85,7 @@ define(input_dcc_basic_bad_checksum_acc,
                              basic_acc_byte_2(1, On),
                              01010101)})
 
-define(input_dcc_basic_short_preamble_acc, {_input_dcc_basic_acc(9, 1, On)})
+define(input_dcc_basic_short_preamble_acc,
        {_input_dcc_basic_acc(eval(9, 1),
                              acc_byte_1(1),
                              basic_acc_byte_2(1, On),
