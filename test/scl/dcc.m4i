@@ -90,4 +90,6 @@ define(input_dcc_basic_bad_checksum_acc,
        -- End of Packet
        input_dcc_one)
 
+define(input_dcc_basic_short_preamble_acc, {_input_dcc_basic_acc(9, 1, On)})
+
 divert(0)dnl
