@@ -355,11 +355,11 @@ ram_clear_loop
 initialisation
   clrf    INTCON            ; Disable interrupts
 
-  lfsr    FSR0, 0x000       ; Clear data memeory bank 0
+  lfsr    FSR0, 0x000       ; Clear data memory bank 0
   call    ram_clear_loop
-  lfsr    FSR0, 0x100       ; Clear data memeory bank 1
+  lfsr    FSR0, 0x100       ; Clear data memory bank 1
   call    ram_clear_loop
-  lfsr    FSR0, 0x200       ; Clear data memeory bank 2
+  lfsr    FSR0, 0x200       ; Clear data memory bank 2
   call    ram_clear_loop
 
   ; Turn off  A/D, all bits digital I/O
