@@ -129,16 +129,16 @@ SLIM_LED_BIT   equ 7  ; Green LED
 #define  DCC_INPUT   PORTB,INT0
 
 DCC_PREAMBLE_COUNT  equ 10
-#define  DCC_NEW_RX_FLAG     dcc_rx_status, 7
-#define  DCC_NEW_PACKET_FLAG dcc_rx_status, 6
-#define  DCC_BAD_PACKET_FLAG dcc_rx_status, 5
-#define  DCC_PREAMBLE_FLAG   dcc_rx_status, 4
+#define  DCC_NEW_BYTE_FLAG          dcc_rx_status, 7
+#define  DCC_NEW_PACKET_FLAG        dcc_rx_status, 6
+#define  DCC_BAD_PACKET_FLAG        dcc_rx_status, 5
+#define  DCC_RECEIVE_PREAMBLE_FLAG  dcc_rx_status, 4
 
-DCC_ACC_BYTE1_MASK     equ b'11000000'
-DCC_ACC_BYTE1_TEST     equ b'10000000'
-DCC_BASIC_BYTE2_MASK   equ b'10001000'
-DCC_BASIC_BYTE2_TEST   equ b'10001000'
-DCC_PACKET_BYTE_COUNT  equ 3
+DCC_ACC_BYTE1_MASK        equ b'11000000'
+DCC_ACC_BYTE1_TEST        equ b'10000000'
+DCC_BASIC_ACC_BYTE2_MASK  equ b'10001000'
+DCC_BASIC_ACC_BYTE2_TEST  equ b'10001000'
+DCC_PACKET_LENGTH         equ 3
 
   nolist
   include   "cbuslib/boot_loader.inc"
@@ -158,21 +158,21 @@ DCC_PACKET_BYTE_COUNT  equ 3
   dcc_byte_bit_downcounter
   dcc_rx_checksum
   dcc_rx_shift_register
-  dcc_rx_register
+  dcc_rx_byte
   dcc_rx_status             ; bit 7 - New Rx byte ready
                             ; bit 6 - New packet ready
                             ; bit 5 - Bad packet
                             ; bit 4 - Waiting for end of preamble
-  dcc_rx_byte_count
-  dcc_rx_byte_1
-  dcc_rx_byte_2
+  dcc_packet_byte_count
+  dcc_packet_byte_1
+  dcc_packet_byte_2
 
-  dcc_event_opcode
-  dcc_event_num_low
-  dcc_event_num_high
+  event_opcode
+  event_num_low
+  event_num_high
 
   ENDC
-#if (0xFF) < (dcc_event_num_high)
+#if (0xFF) < (event_num_high)
     error "RAM allocation beyond end of Bank 0"
 #endif
 
@@ -280,7 +280,7 @@ seen_dcc_zero
   bra     shift_dcc_bit_into_byte
 
 start_of_dcc_byte
-  bcf     DCC_PREAMBLE_FLAG
+  bcf     DCC_RECEIVE_PREAMBLE_FLAG
   movlw   8
   movwf   dcc_byte_bit_downcounter
   bra     dcc_bit_done
@@ -295,7 +295,7 @@ not_dcc_zero
   bra     dcc_packet_bad    ; Shorter than 52 uSec so cannot be 1 half bit
 
 seen_dcc_one
-  btfss   DCC_PREAMBLE_FLAG
+  btfss   DCC_RECEIVE_PREAMBLE_FLAG
   bra     not_dcc_preamble
 
   decf    dcc_preamble_downcounter, W
@@ -325,15 +325,15 @@ shift_dcc_bit_into_byte
 end_of_dcc_byte
   movf    dcc_rx_shift_register, W
   xorwf   dcc_rx_checksum, F
-  movwf   dcc_rx_register
-  bsf     DCC_NEW_RX_FLAG
+  movwf   dcc_rx_byte
+  bsf     DCC_NEW_BYTE_FLAG
   bra     dcc_bit_done
 
 dcc_packet_bad
   bsf     DCC_BAD_PACKET_FLAG
 
 dcc_packet_done
-  bsf     DCC_PREAMBLE_FLAG
+  bsf     DCC_RECEIVE_PREAMBLE_FLAG
   movlw   DCC_PREAMBLE_COUNT
   movwf   dcc_preamble_downcounter
   clrf    dcc_byte_bit_downcounter
@@ -475,7 +475,7 @@ slim_setup
   Set_FLiM_LED_Off
   Set_SLiM_LED_On
 
-  bsf     DCC_PREAMBLE_FLAG
+  bsf     DCC_RECEIVE_PREAMBLE_FLAG
   movlw   DCC_PREAMBLE_COUNT
   movwf   dcc_preamble_downcounter
 
@@ -504,33 +504,33 @@ main_loop
   btfsc   DCC_BAD_PACKET_FLAG
   call    process_bad_dcc_packet
 
-  btfsc   DCC_NEW_RX_FLAG
+  btfsc   DCC_NEW_BYTE_FLAG
   call    process_new_dcc_byte
 
   bra     main_loop
 
 
 ;**********************************************************************
-; Process new DCC packet
+; Verify new DCC packet and if transmit generate corresponding CBUS event
 
 process_new_dcc_packet
   bcf     DCC_NEW_PACKET_FLAG
 
-  movf    dcc_rx_byte_count, W
-  clrf    dcc_rx_byte_count
-  xorlw   DCC_PACKET_BYTE_COUNT
+  movf    dcc_packet_byte_count, W
+  clrf    dcc_packet_byte_count
+  xorlw   DCC_PACKET_LENGTH
   btfss   STATUS, Z         ; Skip if got expected byte count for packet
   return
 
   movlw   DCC_ACC_BYTE1_MASK
-  andwf   dcc_rx_byte_1, W
+  andwf   dcc_packet_byte_1, W
   xorlw   DCC_ACC_BYTE1_TEST
   btfss   STATUS, Z         ; Skip if first byte verification passes
   return
 
-  movlw   DCC_BASIC_BYTE2_MASK
-  andwf   dcc_rx_byte_2, W
-  xorlw   DCC_BASIC_BYTE2_TEST
+  movlw   DCC_BASIC_ACC_BYTE2_MASK
+  andwf   dcc_packet_byte_2, W
+  xorlw   DCC_BASIC_ACC_BYTE2_TEST
   btfss   STATUS, Z         ; Skip if second byte verification passes
   return
 
@@ -549,45 +549,45 @@ process_new_dcc_packet
   ; For toggling pairs output bit, d, not activation bit, C selects On or Off
 
   ; aaa
-  swapf   dcc_rx_byte_2, W
+  swapf   dcc_packet_byte_2, W
   andlw   b'00000111'
   xorlw   b'00000111'
-  movwf   dcc_event_num_high
+  movwf   event_num_high
 
   ; AA AAAA
-  rlncf   dcc_rx_byte_1, F
-  rlncf   dcc_rx_byte_1, W
+  rlncf   dcc_packet_byte_1, F
+  rlncf   dcc_packet_byte_1, W
   andlw   b'11111100'
-  movwf   dcc_event_num_low
+  movwf   event_num_low
 
   ; DD
-  rrncf   dcc_rx_byte_2, W
+  rrncf   dcc_packet_byte_2, W
   andlw   b'00000011'
-  iorwf   dcc_event_num_low, F
+  iorwf   event_num_low, F
 
   ; d
   movlw   OPC_ASOF
-  btfsc   dcc_rx_byte_2, 0  ; d = 0, activate first output of a pair = ASOF
+  btfsc   dcc_packet_byte_2, 0  ; d = 0, activate first output of a pair = ASOF
   movlw   OPC_ASON          ; d = 1, activate second output of a pair = ASON
-  movwf   dcc_event_opcode
+  movwf   event_opcode
 
   ; Event number now 0000 0aaa AAAA AADD (accessory address)
   ; DCC addresses start at 1, map this to event number 0 by subtracting 4
   movlw   4
-  subwf   dcc_event_num_low, F
+  subwf   event_num_low, F
   btfss   STATUS, C             ; Skip if no underflow on low byte ...
-  decf    dcc_event_num_high, F ; ... else borrow from high byte
+  decf    event_num_high, F ; ... else borrow from high byte
 
   banksel TXB1D0
 
   btfsc   TXB1CON, TXREQ
   return
 
-  movff   dcc_event_opcode, TXB1D0
-  clrf    TXB1D1
+  movff   event_opcode, TXB1D0
+  clrf    TXB1D1    ; Node number 0
   clrf    TXB1D2
-  movff   dcc_event_num_high, TXB1D3
-  movff   dcc_event_num_low, TXB1D4
+  movff   event_num_high, TXB1D3
+  movff   event_num_low, TXB1D4
   movlw   5
   movwf   TXB1DLC
   bsf     TXB1CON, TXREQ
@@ -596,37 +596,37 @@ process_new_dcc_packet
 
 
 ;**********************************************************************
-; Process bad DCC packet
+; Reset storage of received bytes on receipt of a bad DCC packet
 
 process_bad_dcc_packet
   bcf     DCC_BAD_PACKET_FLAG
-  clrf    dcc_rx_byte_count ; Packet was bad so ignore bytes received
+  clrf    dcc_packet_byte_count ; Packet was bad so ignore bytes received
   return
 
 
 ;**********************************************************************
-; Process new DCC byte
+; Store first two received bytes of DCC packet and count total bytes received
 
 process_new_dcc_byte
-  bcf     DCC_NEW_RX_FLAG
+  bcf     DCC_NEW_BYTE_FLAG
 
-  movf    dcc_rx_byte_count, F
+  movf    dcc_packet_byte_count, F
   btfss   STATUS, Z         ; Skip if expecting first byte of packet
-  bra     second_dcc_byte
+  bra     received_second_dcc_byte
 
-first_dcc_byte
-  movff   dcc_rx_register, dcc_rx_byte_1
-  bra     count_dcc_bytes
+received_first_dcc_byte
+  movff   dcc_rx_byte, dcc_packet_byte_1
+  bra     count_dcc_bytes_received
 
-second_dcc_byte
-  decf    dcc_rx_byte_count, W
+received_second_dcc_byte
+  decf    dcc_packet_byte_count, W
   btfsc   STATUS, Z         ; Skip if not expecting second byte of packet
-  movff   dcc_rx_register, dcc_rx_byte_2
+  movff   dcc_rx_byte, dcc_packet_byte_2
 
-count_dcc_bytes
-  incf    dcc_rx_byte_count, W
+count_dcc_bytes_received
+  incf    dcc_packet_byte_count, W
   btfss   STATUS, Z         ; Avoid roll over to zero
-  movwf   dcc_rx_byte_count
+  movwf   dcc_packet_byte_count
 
   return
 
