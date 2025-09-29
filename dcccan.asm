@@ -498,29 +498,41 @@ slim_setup
 main_loop
   clrwdt
 
-  btfss   DCC_NEW_PACKET_FLAG
-  bra     dcc_packet_finished
+  btfsc   DCC_NEW_PACKET_FLAG
+  call    process_new_dcc_packet
 
-new_dcc_packet
+  btfsc   DCC_BAD_PACKET_FLAG
+  call    process_bad_dcc_packet
+
+  btfsc   DCC_NEW_RX_FLAG
+  call    process_new_dcc_byte
+
+  bra     main_loop
+
+
+;**********************************************************************
+; Process new DCC packet
+
+process_new_dcc_packet
   bcf     DCC_NEW_PACKET_FLAG
 
   movf    dcc_rx_byte_count, W
   clrf    dcc_rx_byte_count
   xorlw   DCC_PACKET_BYTE_COUNT
   btfss   STATUS, Z         ; Skip if got expected byte count for packet
-  bra     dcc_packet_finished
+  return
 
   movlw   DCC_ACC_BYTE1_MASK
   andwf   dcc_rx_byte_1, W
   xorlw   DCC_ACC_BYTE1_TEST
   btfss   STATUS, Z         ; Skip if first byte verification passes
-  bra     dcc_packet_finished
+  return
 
   movlw   DCC_BASIC_BYTE2_MASK
   andwf   dcc_rx_byte_2, W
   xorlw   DCC_BASIC_BYTE2_TEST
   btfss   STATUS, Z         ; Skip if second byte verification passes
-  bra     dcc_packet_finished
+  return
 
   ; Decode simple accessory decoder output address from RCN-213
   ;
@@ -569,7 +581,7 @@ new_dcc_packet
   banksel TXB1D0
 
   btfsc   TXB1CON, TXREQ
-  bra     dcc_packet_finished
+  return
 
   movff   dcc_event_opcode, TXB1D0
   clrf    TXB1D1
@@ -580,21 +592,22 @@ new_dcc_packet
   movwf   TXB1DLC
   bsf     TXB1CON, TXREQ
 
-dcc_packet_finished
+  return
 
-  btfss   DCC_BAD_PACKET_FLAG
-  bra     no_bad_dcc_packet
 
-bad_dcc_packet
+;**********************************************************************
+; Process bad DCC packet
+
+process_bad_dcc_packet
   bcf     DCC_BAD_PACKET_FLAG
   clrf    dcc_rx_byte_count ; Packet was bad so ignore bytes received
+  return
 
-no_bad_dcc_packet
 
-  btfss   DCC_NEW_RX_FLAG
-  bra     dcc_byte_finished
+;**********************************************************************
+; Process new DCC byte
 
-new_dcc_byte
+process_new_dcc_byte
   bcf     DCC_NEW_RX_FLAG
 
   movf    dcc_rx_byte_count, F
@@ -615,10 +628,7 @@ count_dcc_bytes
   btfss   STATUS, Z         ; Avoid roll over to zero
   movwf   dcc_rx_byte_count
 
-
-dcc_byte_finished
-
-  bra     main_loop
+  return
 
 
 ;**********************************************************************
