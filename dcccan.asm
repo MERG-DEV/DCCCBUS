@@ -134,10 +134,11 @@ DCC_PREAMBLE_COUNT  equ 10
 #define  DCC_BAD_PACKET_FLAG dcc_rx_status, 5
 #define  DCC_PREAMBLE_FLAG   dcc_rx_status, 4
 
-DCC_ACC_BYTE1_MASK    equ b'11000000'
-DCC_ACC_BYTE1_TEST    equ b'10000000'
-DCC_BASIC_BYTE2_MASK  equ b'10001000'
-DCC_BASIC_BYTE2_TEST  equ b'10001000'
+DCC_ACC_BYTE1_MASK     equ b'11000000'
+DCC_ACC_BYTE1_TEST     equ b'10000000'
+DCC_BASIC_BYTE2_MASK   equ b'10001000'
+DCC_BASIC_BYTE2_TEST   equ b'10001000'
+DCC_PACKET_BYTE_COUNT  equ 3
 
   nolist
   include   "cbuslib/boot_loader.inc"
@@ -155,6 +156,7 @@ DCC_BASIC_BYTE2_TEST  equ b'10001000'
 
   dcc_preamble_downcounter
   dcc_byte_bit_downcounter
+  dcc_rx_checksum
   dcc_rx_shift_register
   dcc_rx_register
   dcc_rx_status             ; bit 7 - New Rx byte ready
@@ -308,6 +310,10 @@ not_dcc_preamble
   bra     shift_dcc_bit_into_byte
 
 end_of_dcc_packet
+  movf    dcc_rx_checksum, F
+  btfss   STATUS, Z         ; Skip if checksum verification passes
+  bra     dcc_packet_bad
+
   bsf     DCC_NEW_PACKET_FLAG
   bra     dcc_packet_done
 
@@ -317,7 +323,9 @@ shift_dcc_bit_into_byte
   bra     dcc_bit_done      ; Still receiving a byte
 
 end_of_dcc_byte
-  movff   dcc_rx_shift_register, dcc_rx_register
+  movf    dcc_rx_shift_register, W
+  xorwf   dcc_rx_checksum, F
+  movwf   dcc_rx_register
   bsf     DCC_NEW_RX_FLAG
   bra     dcc_bit_done
 
@@ -329,6 +337,7 @@ dcc_packet_done
   movlw   DCC_PREAMBLE_COUNT
   movwf   dcc_preamble_downcounter
   clrf    dcc_byte_bit_downcounter
+  clrf    dcc_rx_checksum
 
 dcc_bit_done
   bcf     INTCON, INT0IF    ; Re-enable INT0 interrupts
@@ -494,13 +503,11 @@ main_loop
 
 new_dcc_packet
   bcf     DCC_NEW_PACKET_FLAG
+
+  movf    dcc_rx_byte_count, W
   clrf    dcc_rx_byte_count
-
-  movf    dcc_rx_byte_1, W
-  xorwf   dcc_rx_byte_2, W
-  xorwf   dcc_rx_register, W
-
-  btfss   STATUS, Z         ; Skip if checksum verification passes
+  xorlw   DCC_PACKET_BYTE_COUNT
+  btfss   STATUS, Z         ; Skip if got expected byte count for packet
   bra     dcc_packet_finished
 
   movlw   DCC_ACC_BYTE1_MASK
@@ -596,16 +603,18 @@ new_dcc_byte
 
 first_dcc_byte
   movff   dcc_rx_register, dcc_rx_byte_1
-  incf    dcc_rx_byte_count, F
-  bra     dcc_byte_finished
+  bra     count_dcc_bytes
 
 second_dcc_byte
-  decf    dcc_rx_byte_count,W
-  btfss   STATUS, Z         ; Skip if expecting second byte of packet
-  bra     dcc_byte_finished
-
+  decf    dcc_rx_byte_count, W
+  btfsc   STATUS, Z         ; Skip if not expecting second byte of packet
   movff   dcc_rx_register, dcc_rx_byte_2
-  incf    dcc_rx_byte_count, F
+
+count_dcc_bytes
+  incf    dcc_rx_byte_count, W
+  btfss   STATUS, Z         ; Avoid roll over to zero
+  movwf   dcc_rx_byte_count
+
 
 dcc_byte_finished
 
