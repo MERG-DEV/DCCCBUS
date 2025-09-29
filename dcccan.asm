@@ -227,12 +227,12 @@ parameter_checksum
 
 ;**********************************************************************
 high_priority_interrupt
-  btfss   INTCON, INT0IF
-  bra     skip_high_priority_interrupt
-
   ; Protect register values during interrupt
   movff   STATUS, hpint_STATUS
   movwf   hpint_W
+
+  btfss   INTCON, INT0IF
+  bra     exit_high_priority_interrupt
 
   ; DCC input has changed
   btfss   DCC_INPUT
@@ -246,7 +246,7 @@ start_of_dcc_bit
   movlw   1                 ; Adjust for interrupt processing latencies
   movwf   TMR0L
   bsf     T0CON, TMR0ON     ; Enable Timer 0
-  bra     exit_dcc_bit
+  bra     dcc_bit_done
 
 end_of_dcc_bit
   bsf     INTCON2, INTEDG0  ; Next interrupt on rising edge, start of DCC bit
@@ -257,7 +257,7 @@ end_of_dcc_bit
 
   movlw   high (10000 + 1)
   cpfslt  TMR0H
-  bra     bad_dcc_packet    ; Longer than allowed for 0 half bit
+  bra     dcc_packet_bad    ; Longer than allowed for 0 half bit
 
   movf    TMR0H, F
   btfss   STATUS, Z
@@ -270,27 +270,27 @@ end_of_dcc_bit
 seen_dcc_zero
   movf    dcc_preamble_downcounter, F
   btfss   STATUS, Z
-  bra     bad_dcc_packet    ; Zero received whilst expecting preamble
+  bra     dcc_packet_bad    ; Zero received whilst expecting preamble
 
   bcf     STATUS, C
   movf    dcc_byte_bit_downcounter, F
   btfss   STATUS, Z         ; Skip if not receiving a byte
   bra     shift_dcc_bit_into_byte
 
-  ; Start of new byte
+start_of_dcc_byte
   bcf     DCC_PREAMBLE_FLAG
   movlw   8
   movwf   dcc_byte_bit_downcounter
-  bra     exit_dcc_bit
+  bra     dcc_bit_done
 
 not_dcc_zero
   movlw   low (64 + 1)
   cpfslt  TMR0L
-  bra     bad_dcc_packet    ; Longer than allowed for 1 half bit
+  bra     dcc_packet_bad    ; Longer than allowed for 1 half bit
 
   movlw   low (52 - 1)
   cpfsgt  TMR0L
-  bra     bad_dcc_packet    ; Shorter than 52 uSec so cannot be 1 half bit
+  bra     dcc_packet_bad    ; Shorter than 52 uSec so cannot be 1 half bit
 
 seen_dcc_one
   btfss   DCC_PREAMBLE_FLAG
@@ -299,7 +299,7 @@ seen_dcc_one
   decf    dcc_preamble_downcounter, W
   btfsc   STATUS, C         ; Avoid underflow from zero
   movwf   dcc_preamble_downcounter
-  bra     exit_dcc_bit
+  bra     dcc_bit_done
 
 not_dcc_preamble
   bsf     STATUS, C
@@ -307,38 +307,36 @@ not_dcc_preamble
   btfss   STATUS, Z         ; Skip if not receiving a byte
   bra     shift_dcc_bit_into_byte
 
+end_of_dcc_packet
   bsf     DCC_NEW_PACKET_FLAG
-  bra     end_dcc_packet
+  bra     dcc_packet_done
 
 shift_dcc_bit_into_byte
   rlcf    dcc_rx_shift_register, F
   decfsz  dcc_byte_bit_downcounter, F
-  bra     exit_dcc_bit      ; Still receiving a byte
+  bra     dcc_bit_done      ; Still receiving a byte
 
-  ; End of byte reception
+end_of_dcc_byte
   movff   dcc_rx_shift_register, dcc_rx_register
   bsf     DCC_NEW_RX_FLAG
-  bra     exit_dcc_bit
+  bra     dcc_bit_done
 
-bad_dcc_packet
+dcc_packet_bad
   bsf     DCC_BAD_PACKET_FLAG
 
-end_dcc_packet
+dcc_packet_done
   bsf     DCC_PREAMBLE_FLAG
   movlw   DCC_PREAMBLE_COUNT
   movwf   dcc_preamble_downcounter
   clrf    dcc_byte_bit_downcounter
 
-exit_dcc_bit
+dcc_bit_done
   bcf     INTCON, INT0IF    ; Re-enable INT0 interrupts
-
 
 exit_high_priority_interrupt
   ; Restore register values protected during interrupt
   movf    hpint_W, W
   movff   hpint_STATUS, STATUS
-
-skip_high_priority_interrupt
   retfie
 
 
@@ -361,10 +359,6 @@ initialisation
   clrf    INTCON            ; Disable interrupts
 
   lfsr    FSR0, 0x000       ; Clear data memory bank 0
-  call    ram_clear_loop
-  lfsr    FSR0, 0x100       ; Clear data memory bank 1
-  call    ram_clear_loop
-  lfsr    FSR0, 0x200       ; Clear data memory bank 2
   call    ram_clear_loop
 
   ; Turn off  A/D, all bits digital I/O
@@ -496,8 +490,9 @@ main_loop
   clrwdt
 
   btfss   DCC_NEW_PACKET_FLAG
-  bra     dcc_packet_end
+  bra     dcc_packet_finished
 
+new_dcc_packet
   bcf     DCC_NEW_PACKET_FLAG
   clrf    dcc_rx_byte_count
 
@@ -506,19 +501,19 @@ main_loop
   xorwf   dcc_rx_register, W
 
   btfss   STATUS, Z         ; Skip if checksum verification passes
-  bra     dcc_packet_end
+  bra     dcc_packet_finished
 
   movlw   DCC_ACC_BYTE1_MASK
   andwf   dcc_rx_byte_1, W
   xorlw   DCC_ACC_BYTE1_TEST
   btfss   STATUS, Z         ; Skip if first byte verification passes
-  bra     dcc_packet_end
+  bra     dcc_packet_finished
 
   movlw   DCC_BASIC_BYTE2_MASK
   andwf   dcc_rx_byte_2, W
   xorlw   DCC_BASIC_BYTE2_TEST
   btfss   STATUS, Z         ; Skip if second byte verification passes
-  bra     dcc_packet_end
+  bra     dcc_packet_finished
 
   ; Decode simple accessory decoder output address from RCN-213
   ;
@@ -567,7 +562,7 @@ main_loop
   banksel TXB1D0
 
   btfsc   TXB1CON, TXREQ
-  bra     dcc_packet_end
+  bra     dcc_packet_finished
 
   movff   dcc_event_opcode, TXB1D0
   clrf    TXB1D1
@@ -578,37 +573,42 @@ main_loop
   movwf   TXB1DLC
   bsf     TXB1CON, TXREQ
 
-dcc_packet_end
+dcc_packet_finished
+
+  btfss   DCC_BAD_PACKET_FLAG
+  bra     no_bad_dcc_packet
+
+bad_dcc_packet
+  bcf     DCC_BAD_PACKET_FLAG
+  clrf    dcc_rx_byte_count ; Packet was bad so ignore bytes received
+
+no_bad_dcc_packet
 
   btfss   DCC_NEW_RX_FLAG
-  bra     no_dcc_rx
+  bra     dcc_byte_finished
 
+new_dcc_byte
   bcf     DCC_NEW_RX_FLAG
 
   movf    dcc_rx_byte_count, F
-  btfss   STATUS, Z
-  bra     rx_second_dcc_byte
+  btfss   STATUS, Z         ; Skip if expecting first byte of packet
+  bra     second_dcc_byte
 
+first_dcc_byte
   movff   dcc_rx_register, dcc_rx_byte_1
   incf    dcc_rx_byte_count, F
-  bra     no_dcc_rx
+  bra     dcc_byte_finished
 
-rx_second_dcc_byte
+second_dcc_byte
   decf    dcc_rx_byte_count,W
-  btfss   STATUS, Z
-  bra     no_dcc_rx
+  btfss   STATUS, Z         ; Skip if expecting second byte of packet
+  bra     dcc_byte_finished
 
   movff   dcc_rx_register, dcc_rx_byte_2
   incf    dcc_rx_byte_count, F
 
-no_dcc_rx
-  btfss   DCC_BAD_PACKET_FLAG
-  bra     end_dcc_rx
+dcc_byte_finished
 
-  bcf     DCC_BAD_PACKET_FLAG
-  clrf    dcc_rx_byte_count ; Packet was bad so ignore bytes received
-
-end_dcc_rx
   bra     main_loop
 
 
