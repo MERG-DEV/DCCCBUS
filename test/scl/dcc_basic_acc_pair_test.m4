@@ -1,6 +1,6 @@
 set_test_name()
 
-beginning_of_test(489)
+beginning_of_test(587)
     begin_test
       --
       configure_can
@@ -50,6 +50,20 @@ beginning_of_test(489)
       input_dcc_basic_acc_pair(508, Activate)
       tx_wait_for_node_message(OPC_ASON, 0, 0, high_byte(508), EN high,
                                                low_byte(508), EN low)
+      --
+      input_dcc_basic_acc(510, Deactivate)
+      tx_check_for_no_message(1, DCC event)
+      --
+      input_dcc_basic_acc(510, Activate)
+      tx_wait_for_node_message(OPC_ASOF, 0, 0, high_byte(255), EN high,
+                                               low_byte(255), EN low)
+      --
+      input_dcc_basic_acc(511, Deactivate)
+      tx_check_for_no_message(1, DCC event)
+      --
+      input_dcc_basic_acc(511, Activate)
+      tx_wait_for_node_message(OPC_ASON, 0, 0, high_byte(255), EN high,
+                                               low_byte(255), EN low)
       --
       input_dcc_basic_acc_pair(1019, Deactivate)
       tx_wait_for_node_message(OPC_ASOF, 0, 0, high_byte(1019), EN high,
