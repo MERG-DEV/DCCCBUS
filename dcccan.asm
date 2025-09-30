@@ -140,6 +140,34 @@ DCC_BASIC_ACC_BYTE2_MASK  equ b'10001000'
 DCC_BASIC_ACC_BYTE2_TEST  equ b'10001000'
 DCC_PACKET_LENGTH         equ 3
 
+; Received DCC packets and outgoing BUS messages are buffered in cyclic queues
+; which reside contiguously in Bank 1. To simplify index artihmetic queue
+; slots are eight bytes in length and each queue contains sixteen slots.
+;
+; The first byte of each slot indicates the length of the packet or message in
+; the slot but is not set until an entire packet or message is queued so a non
+; zero first byte, length, indicate the slot is ready for extraction from the
+; queue.
+;
+; Queues are accessed using FSR0 during interrupts and FSR1 outside interrupts.
+
+QUEUE_BASE  equ 0x100
+
+PACKET_QUEUE_SLOT_LENGTH  equ  8
+PACKET_QUEUE_SLOT_COUNT   equ 16
+
+PACKET_QUEUE_SIZE   equ PACKET_QUEUE_SLOT_LENGTH * PACKET_QUEUE_SLOT_COUNT
+PACKET_QUEUE_START  equ QUEUE_BASE
+AFTER_PACKET_QUEUE  equ PACKET_QUEUE_START + PACKET_QUEUE_SIZE
+
+TX_QUEUE_SLOT_LENGTH  equ  8
+TX_QUEUE_SLOT_COUNT   equ 16
+
+TX_QUEUE_SIZE   equ TX_QUEUE_SLOT_LENGTH * TX_QUEUE_SLOT_COUNT
+TX_QUEUE_START  equ AFTER_PACKET_QUEUE
+AFTER_TX_QUEUE  equ TX_QUEUE_START + TX_QUEUE_SIZE
+
+
   nolist
   include   "cbuslib/boot_loader.inc"
   list
@@ -164,17 +192,22 @@ DCC_PACKET_LENGTH         equ 3
                             ; bit 5 - Bad packet
                             ; bit 4 - Waiting for end of preamble
   dcc_packet_byte_count
-  dcc_packet_byte_1
-  dcc_packet_byte_2
+
+  dcc_packet_queue_insert
+  dcc_packet_queue_extract
 
   event_opcode
   event_num_low
   event_num_high
 
+  event_queue_insert
+  event_queue_extract
+
   ENDC
 #if (0xFF) < (event_num_high)
     error "RAM allocation beyond end of Bank 0"
 #endif
+
 
 ;**********************************************************************
 ; EEPROM initialisation
@@ -184,10 +217,12 @@ DCC_PACKET_LENGTH         equ 3
 ; Start of program code
 
   org  NODE_TYPE_PARAMETER     ; Node type parameter
+
 node_type_name
   db  "DCCCAN "
 
   org  NODE_PARAMETERS
+
 node_parameters
   db  MANUFACTURER_ID, FIRMWARE_MINOR_VERSION, MODULE_TYPE
   db  NUMBER_OF_EVENTS, VARIABLES_PER_EVENT, NUMBER_OF_NODE_VARIABLES
@@ -218,17 +253,21 @@ NODE_PARAMETER_CHECKSUM  set NODE_PARAMETER_CHECKSUM + low initialisation
 NODE_PARAMETER_CHECKSUM  set NODE_PARAMETER_CHECKSUM + NODE_PARAMETER_COUNT
 
   org  AFTER_NODE_PARAMETERS
+
 parameter_count
   dw  NODE_PARAMETER_COUNT     ; Number of parameters implemented
+
 module_name
   dw  node_type_name           ; Pointer to module type name
   dw  0                        ; Top 2 bytes of 32 bit address not used
+
 parameter_checksum
   dw  NODE_PARAMETER_CHECKSUM  ; Checksum of parameters
 
 
 ;**********************************************************************
 high_priority_interrupt
+
   ; Protect register values during interrupt
   movff   STATUS, hpint_STATUS
   movwf   hpint_W
@@ -352,22 +391,28 @@ exit_high_priority_interrupt
 ;**********************************************************************
 low_priority_interrupt
 exit_low_priority_interrupt
+
   retfie
 
 
 ;**********************************************************************
 ram_clear_loop
+
   clrf    POSTINC0
   tstfsz  FSR0L
   bra     ram_clear_loop
+
   return
 
 
 ;**********************************************************************
 initialisation
+
   clrf    INTCON            ; Disable interrupts
 
   lfsr    FSR0, 0x000       ; Clear data memory bank 0
+  call    ram_clear_loop
+  lfsr    FSR0, QUEUE_BASE  ; Clear DCC packet and event Tx queues memory bank
   call    ram_clear_loop
 
   ; Turn off  A/D, all bits digital I/O
@@ -471,13 +516,27 @@ can_normal_wait
                             ;          Assign 1:4 prescaler, 1 uSec tick
   movwf   T0CON
 
-slim_setup
-  Set_FLiM_LED_Off
-  Set_SLiM_LED_On
-
   bsf     DCC_RECEIVE_PREAMBLE_FLAG
   movlw   DCC_PREAMBLE_COUNT
   movwf   dcc_preamble_downcounter
+
+  ; FSR0, during interrupt, and FSR1, outside interrupt, will be used to access
+  ; received DCC packet and outgoing CBUS message queues which reside
+  ; contiguously in the same memory bank
+  lfsr    FSR0, QUEUE_BASE
+  lfsr    FSR1, QUEUE_BASE
+
+  movlw   low PACKET_QUEUE_START
+  movwf   dcc_packet_queue_insert
+  movwf   dcc_packet_queue_extract
+
+  movlw   low TX_QUEUE_START
+  movwf   event_queue_insert
+  movwf   event_queue_extract
+
+slim_setup
+  Set_FLiM_LED_Off
+  Set_SLiM_LED_On
 
   bsf     RCON, IPEN        ; Enable interrupt priority levels
   clrf    INTCON3
@@ -498,41 +557,119 @@ slim_setup
 main_loop
   clrwdt
 
+  btfsc   DCC_NEW_BYTE_FLAG
+  call    store_new_dcc_byte
+
   btfsc   DCC_NEW_PACKET_FLAG
-  call    process_new_dcc_packet
+  call    verify_new_dcc_packet
 
   btfsc   DCC_BAD_PACKET_FLAG
-  call    process_bad_dcc_packet
+  call    ignore_bad_dcc_packet
 
-  btfsc   DCC_NEW_BYTE_FLAG
-  call    process_new_dcc_byte
+  btfss   TXB1CON, TXREQ
+  call    transmit_next_cbus_event
 
   bra     main_loop
 
 
 ;**********************************************************************
-; Verify new DCC packet and if transmit generate corresponding CBUS event
+store_new_dcc_byte
 
-process_new_dcc_packet
+  bcf     DCC_NEW_BYTE_FLAG
+
+  incf    dcc_packet_queue_insert, W
+  andlw   PACKET_QUEUE_SLOT_LENGTH - 1
+  btfsc   STATUS, Z         ; Skip if not past end of slot
+  bra     count_dcc_bytes
+
+  incf    dcc_packet_queue_insert, F
+  movff   dcc_packet_queue_insert, FSR1L
+  movff   dcc_rx_byte, INDF1
+
+count_dcc_bytes
+  incf    dcc_packet_byte_count, W
+  btfss   STATUS, Z         ; Avoid roll over to zero
+  movwf   dcc_packet_byte_count
+
+  return
+
+
+;**********************************************************************
+verify_new_dcc_packet
+
   bcf     DCC_NEW_PACKET_FLAG
 
-  movf    dcc_packet_byte_count, W
-  clrf    dcc_packet_byte_count
-  xorlw   DCC_PACKET_LENGTH
-  btfss   STATUS, Z         ; Skip if got expected byte count for packet
-  return
+  ; Reset insert pointer to start of slot
+  movf    dcc_packet_queue_insert, W
+  andlw   ~(PACKET_QUEUE_SLOT_LENGTH - 1)
+  movwf   dcc_packet_queue_insert
+
+  incf    dcc_packet_queue_insert, W
+  movwf   FSR1L             ; FSR1 points to first byte of queued packet
 
   movlw   DCC_ACC_BYTE1_MASK
-  andwf   dcc_packet_byte_1, W
+  andwf   INDF1, W
   xorlw   DCC_ACC_BYTE1_TEST
   btfss   STATUS, Z         ; Skip if first byte verification passes
-  return
+  bra     skip_new_dcc_packet
+
+  incf    FSR1L             ; FSR1 points to second byte of queued packet
 
   movlw   DCC_BASIC_ACC_BYTE2_MASK
-  andwf   dcc_packet_byte_2, W
+  andwf   INDF1, W
   xorlw   DCC_BASIC_ACC_BYTE2_TEST
   btfss   STATUS, Z         ; Skip if second byte verification passes
+  bra     skip_new_dcc_packet
+
+  movf    dcc_packet_byte_count, W
+  xorlw   DCC_PACKET_LENGTH
+  btfss   STATUS, Z         ; Skip if got expected byte count for packet
+  bra     skip_new_dcc_packet
+
+  movff   dcc_packet_queue_insert, FSR1L
+  movff   dcc_packet_byte_count, INDF1
+
+  ; Move insert pointer on to start of next slot, wrapping around end of queue
+  movlw   PACKET_QUEUE_SLOT_LENGTH
+  addwf   dcc_packet_queue_insert, W
+  movwf   dcc_packet_queue_insert
+  xorlw   low AFTER_PACKET_QUEUE
+  movlw   low PACKET_QUEUE_START
+  btfsc   STATUS, Z         ; Skip if not past end of queue
+  movwf   dcc_packet_queue_insert
+
+skip_new_dcc_packet
+  clrf    dcc_packet_byte_count
+
   return
+
+
+;**********************************************************************
+ignore_bad_dcc_packet
+
+  bcf     DCC_BAD_PACKET_FLAG
+
+  ; Reset insert pointer to start of current slot
+  movf    dcc_packet_queue_insert, W
+  andlw   ~(PACKET_QUEUE_SLOT_LENGTH - 1)
+  movwf   dcc_packet_queue_insert
+
+  clrf    dcc_packet_byte_count ; Packet was bad so ignore bytes received
+
+  return
+
+
+;**********************************************************************
+transmit_next_cbus_event
+
+  movff   dcc_packet_queue_extract, FSR1L
+  movf    INDF1, F
+  btfsc   STATUS, Z         ; Skip if queued packet ready
+  return
+
+  movlw   2
+  addwf   dcc_packet_queue_extract, W
+  movwf   FSR1L             ; FSR1 points to second byte of queued packet
 
   ; Decode simple accessory decoder output address from RCN-213
   ;
@@ -549,25 +686,29 @@ process_new_dcc_packet
   ; For toggling pairs output bit, d, not activation bit, C selects On or Off
 
   ; aaa
-  swapf   dcc_packet_byte_2, W
+  swapf   INDF1, W
   andlw   b'00000111'
   xorlw   b'00000111'
   movwf   event_num_high
 
+  decf    FSR1L             ; FSR1 points to first byte of queued packet
+
   ; AA AAAA
-  rlncf   dcc_packet_byte_1, F
-  rlncf   dcc_packet_byte_1, W
+  rlncf   INDF1, F
+  rlncf   INDF1, W
   andlw   b'11111100'
   movwf   event_num_low
 
+  incf    FSR1L, F          ; FSR1 points to second byte of queued packet
+
   ; DD
-  rrncf   dcc_packet_byte_2, W
+  rrncf   INDF1, W
   andlw   b'00000011'
   iorwf   event_num_low, F
 
   ; d
   movlw   OPC_ASOF
-  btfsc   dcc_packet_byte_2, 0  ; d = 0, activate first output of a pair = ASOF
+  btfsc   INDF1, 0          ; d = 0, activate first output of a pair = ASOF
   movlw   OPC_ASON          ; d = 1, activate second output of a pair = ASON
   movwf   event_opcode
 
@@ -575,13 +716,10 @@ process_new_dcc_packet
   ; DCC addresses start at 1, map this to event number 0 by subtracting 4
   movlw   4
   subwf   event_num_low, F
-  btfss   STATUS, C             ; Skip if no underflow on low byte ...
+  btfss   STATUS, C         ; Skip if no underflow on low byte ...
   decf    event_num_high, F ; ... else borrow from high byte
 
   banksel TXB1D0
-
-  btfsc   TXB1CON, TXREQ
-  return
 
   movff   event_opcode, TXB1D0
   clrf    TXB1D1    ; Node number 0
@@ -592,41 +730,18 @@ process_new_dcc_packet
   movwf   TXB1DLC
   bsf     TXB1CON, TXREQ
 
-  return
+  ; Clear first byte of slot, packet length, so it can be reused
+  movff   dcc_packet_queue_extract, FSR1L
+  clrf    INDF1, F
 
-
-;**********************************************************************
-; Reset storage of received bytes on receipt of a bad DCC packet
-
-process_bad_dcc_packet
-  bcf     DCC_BAD_PACKET_FLAG
-  clrf    dcc_packet_byte_count ; Packet was bad so ignore bytes received
-  return
-
-
-;**********************************************************************
-; Store first two received bytes of DCC packet and count total bytes received
-
-process_new_dcc_byte
-  bcf     DCC_NEW_BYTE_FLAG
-
-  movf    dcc_packet_byte_count, F
-  btfss   STATUS, Z         ; Skip if expecting first byte of packet
-  bra     received_second_dcc_byte
-
-received_first_dcc_byte
-  movff   dcc_rx_byte, dcc_packet_byte_1
-  bra     count_dcc_bytes_received
-
-received_second_dcc_byte
-  decf    dcc_packet_byte_count, W
-  btfsc   STATUS, Z         ; Skip if not expecting second byte of packet
-  movff   dcc_rx_byte, dcc_packet_byte_2
-
-count_dcc_bytes_received
-  incf    dcc_packet_byte_count, W
-  btfss   STATUS, Z         ; Avoid roll over to zero
-  movwf   dcc_packet_byte_count
+  ; Move extract pointer on to start of next slot, wrapping around end of queue
+  movf    dcc_packet_queue_extract, W
+  addlw   PACKET_QUEUE_SLOT_LENGTH
+  movwf   dcc_packet_queue_extract
+  xorlw   low AFTER_PACKET_QUEUE
+  movlw   low PACKET_QUEUE_START
+  btfsc   STATUS, Z             ; Skip if not past end of queue
+  movwf   dcc_packet_queue_extract
 
   return
 
@@ -635,6 +750,7 @@ count_dcc_bytes_received
 ; EEPROM data
 
   org  EEPROM_DATA
+
 ee_can_id
   de  b'01111111'
 ee_module_status
@@ -643,6 +759,7 @@ ee_node_id
   de  0, 0
 
   org  BOOTLOAD_EE
+
   de  0, 0
 
 
