@@ -129,6 +129,7 @@ SLIM_LED_BIT   equ 7  ; Green LED
 #define  DCC_INPUT   PORTB,INT0
 
 DCC_PREAMBLE_COUNT  equ 10
+DCC_BYTE_BIT_COUT   equ  8
 #define  DCC_NEW_BYTE_FLAG          dcc_rx_status, 7
 #define  DCC_NEW_PACKET_FLAG        dcc_rx_status, 6
 #define  DCC_BAD_PACKET_FLAG        dcc_rx_status, 5
@@ -321,7 +322,7 @@ seen_dcc_zero
 
 start_of_dcc_byte
   bcf     DCC_RECEIVE_PREAMBLE_FLAG
-  movlw   8
+  movlw   DCC_BYTE_BIT_COUT
   movwf   dcc_byte_bit_downcounter
   bra     dcc_bit_done
 
@@ -410,6 +411,11 @@ ram_clear_loop
 initialisation
 
   clrf    INTCON            ; Disable interrupts
+
+  bsf     RCON, IPEN        ; Enable interrupt priority levels
+  clrf    INTCON3
+  clrf    INTCON2           ; Pullups enabled on PORTB inputs
+                            ; INT0 interrupt on falling edge
 
   lfsr    FSR0, 0x000       ; Clear data memory bank 0
   call    ram_clear_loop
@@ -517,10 +523,6 @@ can_normal_wait
                             ;          Assign 1:4 prescaler, 1 uSec tick
   movwf   T0CON
 
-  bsf     DCC_RECEIVE_PREAMBLE_FLAG
-  movlw   DCC_PREAMBLE_COUNT
-  movwf   dcc_preamble_downcounter
-
   ; FSR0, during interrupt, and FSR1, outside interrupt, will be used to access
   ; received DCC packet and outgoing CBUS message queues which reside
   ; contiguously in the same memory bank
@@ -535,14 +537,17 @@ can_normal_wait
   movwf   event_queue_insert
   movwf   event_queue_extract
 
+  ; DCC reception to start seeking new packet on next rising edge
+  bsf     INTCON2, INTEDG0  ; Next interrupt on rising edge, start of DCC bit
+  bsf     DCC_RECEIVE_PREAMBLE_FLAG
+  movlw   DCC_PREAMBLE_COUNT
+  movwf   dcc_preamble_downcounter
+  clrf    dcc_byte_bit_downcounter
+  clrf    dcc_rx_checksum
+
 slim_setup
   Set_FLiM_LED_Off
   Set_SLiM_LED_On
-
-  bsf     RCON, IPEN        ; Enable interrupt priority levels
-  clrf    INTCON3
-  clrf    INTCON2           ; Pullups enabled on PORTB inputs
-                            ; INT0 interrupt on falling edge
 
   movlw   b'10010000'       ; Enable high priority interrupts
                             ; Disable low priority peripheral interrupts

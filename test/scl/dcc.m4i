@@ -100,7 +100,7 @@ define(input_dcc_basic_bad_checksum_acc,
                              01010101)})
 
 define(input_dcc_basic_short_preamble_acc,
-       {_input_dcc_basic_acc(eval(9, 1),
+       {_input_dcc_basic_acc(eval($1, 1),
                              acc_byte_1(1),
                              basic_acc_byte_2(1, Activate),
                              checksum(acc_byte_1(1),
