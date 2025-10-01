@@ -580,9 +580,18 @@ store_new_dcc_byte
 
   bcf     DCC_NEW_BYTE_FLAG
 
-  incf    dcc_packet_queue_insert, W
-  andlw   DCC_QUEUE_SLOT_LENGTH - 1
-  btfsc   STATUS, Z         ; Skip if not past end of slot
+  movf    dcc_packet_byte_count, W
+  btfss   STATUS, Z         ; Skip if first byte of packet
+  bra     store_next_dcc_byte
+
+  movff   dcc_packet_queue_insert, FSR1L
+  movf    INDF1, F
+  btfss   STATUS, Z         ; Skip if queued packet slot is useable
+  return
+
+store_next_dcc_byte
+  andlw   ~(DCC_QUEUE_SLOT_LENGTH - 1)
+  btfss   STATUS, Z         ; Skip if not past end of slot
   bra     count_dcc_bytes
 
   incf    dcc_packet_queue_insert, F

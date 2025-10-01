@@ -1,6 +1,6 @@
 set_test_name()
 
-beginning_of_test(881)
+beginning_of_test(931)
     begin_test
       --
       configure_can
@@ -22,12 +22,12 @@ beginning_of_test(881)
       input_dcc_basic_acc_pair(11, Deactivate)
       input_dcc_basic_acc_pair(12, Activate)
       --
-      log(13 Deactivate not queued for Tx)
+      log(DCC packet 13 Deactivate not queued for Tx)
       input_dcc_basic_acc(13, Deactivate)
       --
       input_dcc_basic_acc(14, Activate)
       --
-      log(15 Deactivate not queued for Tx)
+      log(DCC packet 15 Deactivate not queued for Tx)
       input_dcc_basic_acc(15, Deactivate)
       --
       input_dcc_basic_acc(16, Activate)
@@ -60,10 +60,10 @@ beginning_of_test(881)
       input_dcc_basic_acc_pair(119, Activate)
       log(1 in transmitter 16 in Event Tx queue 16 in DCC packet queue)
       --
-      log(DCC packet queue 104 overwritten by 204)
+      log(DCC packet 204 Deactivate discarded)
       input_dcc_basic_acc_pair(204, Deactivate)
       --
-      log(DCC packet queue 105 overwritten by 205)
+      log(DCC packet 205 Activate discarded)
       input_dcc_basic_acc_pair(205, Activate)
       log(1 in transmitter 16 in Event Tx queue 16 in DCC packet queue)
       --
@@ -90,8 +90,8 @@ beginning_of_test(881)
       tx_wait_for_node_message(OPC_ASOF, 0, 0, 0, EN high, 103, EN low)
       log(DCC packet queue cleared)
       --
-      tx_wait_for_node_message(OPC_ASOF, 0, 0, 0, EN high, 204, EN low)
-      tx_wait_for_node_message(OPC_ASON, 0, 0, 0, EN high, 205, EN low)
+      tx_wait_for_node_message(OPC_ASON, 0, 0, 0, EN high, 104, EN low)
+      tx_wait_for_node_message(OPC_ASOF, 0, 0, 0, EN high, 105, EN low)
       tx_wait_for_node_message(OPC_ASON, 0, 0, 0, EN high, 106, EN low)
       tx_wait_for_node_message(OPC_ASOF, 0, 0, 0, EN high, 107, EN low)
       tx_wait_for_node_message(OPC_ASON, 0, 0, 0, EN high, 108, EN low)
@@ -109,6 +109,16 @@ beginning_of_test(881)
       --
       tx_wait_for_node_message(OPC_ASON, 0, 0, 0, EN high, 119, EN low)
       log(Event Tx queue cleared)
+      --
+      tx_check_for_no_message(1, DCC event)
+      --
+      input_dcc_basic_acc_pair(301, Activate)
+      tx_wait_for_node_message(OPC_ASON, 0, 0, high_byte(301), EN high,
+                                               low_byte(301), EN low)
+      --
+      input_dcc_basic_acc_pair(301, Deactivate)
+      tx_wait_for_node_message(OPC_ASOF, 0, 0, high_byte(301), EN high,
+                                               low_byte(301), EN low)
       --
       tx_check_for_no_message(1, DCC event)
       --
