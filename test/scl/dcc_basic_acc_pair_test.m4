@@ -65,6 +65,8 @@ beginning_of_test(894)
       tx_wait_for_node_message(OPC_ASON, 0, 0, high_byte(255), EN high,
                                                low_byte(255), EN low)
       --
+      log(DCC packet queue wrapped)
+      --
       input_dcc_basic_acc_pair(1019, Deactivate)
       tx_wait_for_node_message(OPC_ASOF, 0, 0, high_byte(1019), EN high,
                                                low_byte(1019), EN low)
@@ -72,6 +74,8 @@ beginning_of_test(894)
       input_dcc_basic_acc_pair(1019, Activate)
       tx_wait_for_node_message(OPC_ASON, 0, 0, high_byte(1019), EN high,
                                                low_byte(1019), EN low)
+      --
+      log(Event Tx queue wrapped)
       --
       input_dcc_basic_acc_pair(1020, Deactivate)
       tx_wait_for_node_message(OPC_ASOF, 0, 0, high_byte(1020), EN high,
@@ -129,6 +133,8 @@ beginning_of_test(894)
       tx_wait_for_node_message(OPC_ASON, 0, 0, high_byte(13), EN high,
                                                low_byte(13), EN low)
       --
+      log(DCC packet queue wrapped)
+      --
       input_dcc_basic_acc_pair(14, Activate)
       tx_wait_for_node_message(OPC_ASON, 0, 0, high_byte(14), EN high,
                                                low_byte(14), EN low)
@@ -136,6 +142,8 @@ beginning_of_test(894)
       input_dcc_basic_acc_pair(15, Activate)
       tx_wait_for_node_message(OPC_ASON, 0, 0, high_byte(15), EN high,
                                                low_byte(15), EN low)
+      --
+      log(Event Tx queue wrapped)
       --
       input_dcc_basic_acc_pair(16, Activate)
       tx_wait_for_node_message(OPC_ASON, 0, 0, high_byte(16), EN high,
