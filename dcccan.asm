@@ -130,10 +130,10 @@ SLIM_LED_BIT   equ 7  ; Green LED
 
 DCC_PREAMBLE_COUNT  equ 10
 DCC_BYTE_BIT_COUT   equ  8
-#define  DCC_NEW_BYTE_FLAG          dcc_rx_status, 7
-#define  DCC_NEW_PACKET_FLAG        dcc_rx_status, 6
-#define  DCC_BAD_PACKET_FLAG        dcc_rx_status, 5
-#define  DCC_RECEIVE_PREAMBLE_FLAG  dcc_rx_status, 4
+#define  DCC_NEW_BYTE_FLAG     dcc_rx_status, 7
+#define  DCC_NEW_PACKET_FLAG   dcc_rx_status, 6
+#define  DCC_BAD_PACKET_FLAG   dcc_rx_status, 5
+#define  DCC_SYNCHRONISE_FLAG  dcc_rx_status, 4
 
 DCC_ACC_BYTE1_MASK        equ b'11000000'
 DCC_ACC_BYTE1_TEST        equ b'10000000'
@@ -321,7 +321,7 @@ seen_dcc_zero
   bra     shift_dcc_bit_into_byte
 
 start_of_dcc_byte
-  bcf     DCC_RECEIVE_PREAMBLE_FLAG
+  bcf     DCC_SYNCHRONISE_FLAG
   movlw   DCC_BYTE_BIT_COUT
   movwf   dcc_byte_bit_downcounter
   bra     dcc_bit_done
@@ -336,7 +336,7 @@ not_dcc_zero
   bra     dcc_packet_bad    ; Shorter than 52 uSec so cannot be 1 half bit
 
 seen_dcc_one
-  btfss   DCC_RECEIVE_PREAMBLE_FLAG
+  btfss   DCC_SYNCHRONISE_FLAG
   bra     not_dcc_preamble
 
   decf    dcc_preamble_downcounter, W
@@ -374,9 +374,11 @@ dcc_packet_bad
   bsf     DCC_BAD_PACKET_FLAG
 
 dcc_packet_done
-  bsf     DCC_RECEIVE_PREAMBLE_FLAG
+  bsf     DCC_SYNCHRONISE_FLAG
   movlw   DCC_PREAMBLE_COUNT
   movwf   dcc_preamble_downcounter
+  btfss   DCC_NEW_PACKET_FLAG
+  decf    dcc_preamble_downcounter, F   ; Packet end bit counts as preamble
   clrf    dcc_byte_bit_downcounter
   clrf    dcc_rx_checksum
 
@@ -539,7 +541,7 @@ can_normal_wait
 
   ; DCC reception to start seeking new packet on next rising edge
   bsf     INTCON2, INTEDG0  ; Next interrupt on rising edge, start of DCC bit
-  bsf     DCC_RECEIVE_PREAMBLE_FLAG
+  bsf     DCC_SYNCHRONISE_FLAG
   movlw   DCC_PREAMBLE_COUNT
   movwf   dcc_preamble_downcounter
   clrf    dcc_byte_bit_downcounter
