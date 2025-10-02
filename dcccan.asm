@@ -153,19 +153,11 @@ DCC_BASIC_ACC_BYTE2_MASK  equ b'10001000'
 DCC_BASIC_ACC_BYTE2_TEST  equ b'10001000'
 DCC_PACKET_LENGTH         equ 3
 
+PACKET_QUEUE_START        equ 0x100
 PACKET_QUEUE_SLOT_LENGTH  equ 16
-PACKET_QUEUE_SLOT_COUNT   equ 16
 
-PACKET_QUEUE_SIZE   equ PACKET_QUEUE_SLOT_LENGTH * PACKET_QUEUE_SLOT_COUNT
-PACKET_QUEUE_START  equ 0x100
-BEYOND_DCC_QUEUE    equ PACKET_QUEUE_START + PACKET_QUEUE_SIZE
-
+EVENT_QUEUE_START        equ 0x200
 EVENT_QUEUE_SLOT_LENGTH  equ 16
-EVENT_QUEUE_SLOT_COUNT   equ 16
-
-EVENT_QUEUE_SIZE   equ EVENT_QUEUE_SLOT_LENGTH * EVENT_QUEUE_SLOT_COUNT
-EVENT_QUEUE_START  equ 0x200
-BEYOND_TX_QUEUE    equ EVENT_QUEUE_START + EVENT_QUEUE_SIZE
 
 
   nolist
@@ -602,46 +594,38 @@ verify_and_enqueue_dcc_packet
 
   bcf     DCC_NEW_PACKET_FLAG
 
-  ; Reset insert pointer to start of slot
+  ; Reset insert offset to start of current slot
   movlw   ~(PACKET_QUEUE_SLOT_LENGTH - 1)
   andwf   dcc_packet_queue_insert, F
 
-  lfsr    FSR1, PACKET_QUEUE_START
   incf    dcc_packet_queue_insert, W
+  lfsr    FSR1, PACKET_QUEUE_START
   movwf   FSR1L             ; FSR1 points to first byte of queued packet
 
   movlw   DCC_ACC_BYTE1_MASK
-  andwf   INDF1, W
+  andwf   POSTINC1, W       ; FSR1 points to second byte of queued packet
   xorlw   DCC_ACC_BYTE1_TEST
   btfss   STATUS, Z         ; Skip if first byte verification passes
-  bra     skip_new_dcc_packet
-
-  incf    FSR1L             ; FSR1 points to second byte of queued packet
+  bra     skip_dcc_packet
 
   movlw   DCC_BASIC_ACC_BYTE2_MASK
   andwf   INDF1, W
   xorlw   DCC_BASIC_ACC_BYTE2_TEST
   btfss   STATUS, Z         ; Skip if second byte verification passes
-  bra     skip_new_dcc_packet
+  bra     skip_dcc_packet
 
-  movf    dcc_packet_byte_count, W
-  xorlw   DCC_PACKET_LENGTH
-  btfss   STATUS, Z         ; Skip if got expected byte count for packet
-  bra     skip_new_dcc_packet
+  movlw   DCC_PACKET_LENGTH
+  cpfseq  dcc_packet_byte_count ; Skip if got expected byte count for packet
+  bra     skip_dcc_packet
 
   movff   dcc_packet_queue_insert, FSR1L
   movff   dcc_packet_byte_count, INDF1
 
-  ; Move insert pointer on to start of next slot, wrapping around end of queue
+  ; Advance insert offset to start of next slot, wrap round end of queue
   movlw   PACKET_QUEUE_SLOT_LENGTH
-  addwf   dcc_packet_queue_insert, W
-  movwf   dcc_packet_queue_insert
-  xorlw   low BEYOND_DCC_QUEUE
-  movlw   low PACKET_QUEUE_START
-  btfsc   STATUS, Z         ; Skip if not past end of queue
-  movwf   dcc_packet_queue_insert
+  addwf   dcc_packet_queue_insert, F
 
-skip_new_dcc_packet
+skip_dcc_packet
   clrf    dcc_packet_byte_count
 
   return
@@ -656,7 +640,7 @@ ignore_bad_dcc_packet
   movlw   ~(PACKET_QUEUE_SLOT_LENGTH - 1)
   andwf   dcc_packet_queue_insert, F
 
-  clrf    dcc_packet_byte_count ; Packet was bad so ignore bytes received
+  clrf    dcc_packet_byte_count ; Packet was bad so ignore any bytes received
 
   return
 
@@ -666,8 +650,7 @@ enqueue_cbus_events_for_tx
 
   lfsr    FSR1, EVENT_QUEUE_START
   movff   event_queue_insert, FSR1L
-  movf    INDF1, F
-  btfss   STATUS, Z         ; Skip if event Tx slot useable
+  tstfsz  INDF1             ; Skip if event Tx slot useable
   return
 
   lfsr    FSR1, PACKET_QUEUE_START
@@ -677,8 +660,7 @@ enqueue_cbus_events_for_tx
   return
 
   movlw   2
-  addwf   dcc_packet_queue_extract, W
-  movwf   FSR1L             ; FSR1 points to second byte of queued packet
+  addwf   FSR1L, F          ; FSR1 points to second byte of queued packet
 
   ; Decode simple accessory decoder output address from RCN-213
   ;
@@ -695,20 +677,16 @@ enqueue_cbus_events_for_tx
   ; For toggling pairs output bit, d, not activation bit, C selects On or Off
 
   ; aaa
-  swapf   INDF1, W
+  swapf   POSTDEC1, W       ; FSR1 points to first byte of queued packet
   andlw   b'00000111'
   xorlw   b'00000111'
   movwf   event_num_high
 
-  decf    FSR1L             ; FSR1 points to first byte of queued packet
-
   ; AA AAAA
   rlncf   INDF1, F
-  rlncf   INDF1, W
+  rlncf   POSTINC1, W       ; FSR1 points to second byte of queued packet
   andlw   b'11111100'
   movwf   event_num_low
-
-  incf    FSR1L, F          ; FSR1 points to second byte of queued packet
 
   ; DD
   rrncf   INDF1, W
@@ -735,30 +713,18 @@ enqueue_cbus_events_for_tx
   movff   event_num_high, POSTINC1
   movff   event_num_low, INDF1
 
-  ; Move event insert pointer on to start of next slot, wrapping around end of
-  ; queue
-  movf    event_queue_insert, W
-  addlw   EVENT_QUEUE_SLOT_LENGTH
-  movwf   event_queue_insert
-  xorlw   low BEYOND_TX_QUEUE
-  movlw   low EVENT_QUEUE_START
-  btfsc   STATUS, Z             ; Skip if not past end of queue
-  movwf   event_queue_insert
+  ; Advance event insert offset to start of next slot, wrap round end of queue
+  movlw   EVENT_QUEUE_SLOT_LENGTH
+  addwf   event_queue_insert, F
 
   ; Clear first byte of packet slot, length, so it can be reused
   lfsr    FSR1, PACKET_QUEUE_START
   movff   dcc_packet_queue_extract, FSR1L
   clrf    INDF1
 
-  ; Move packet extract pointer on to start of next slot, wrapping around end
-  ; of queue
-  movf    dcc_packet_queue_extract, W
-  addlw   PACKET_QUEUE_SLOT_LENGTH
-  movwf   dcc_packet_queue_extract
-  xorlw   low BEYOND_DCC_QUEUE
-  movlw   low PACKET_QUEUE_START
-  btfsc   STATUS, Z             ; Skip if not past end of queue
-  movwf   dcc_packet_queue_extract
+  ; Advance packet extract offset to start of next slot, wrap round end of queue
+  movlw   PACKET_QUEUE_SLOT_LENGTH
+  addwf   dcc_packet_queue_extract, F
 
   return
 
@@ -783,15 +749,9 @@ transmit_next_cbus_event
   movff   POSTINC1, TXB1D4  ; Event number low
   bsf     TXB1CON, TXREQ
 
-  ; Move event extract pointer on to start of next slot, wrapping around end of
-  ; queue
-  movf    event_queue_extract, W
-  addlw   EVENT_QUEUE_SLOT_LENGTH
-  movwf   event_queue_extract
-  xorlw   low BEYOND_TX_QUEUE
-  movlw   low EVENT_QUEUE_START
-  btfsc   STATUS, Z             ; Skip if not past end of queue
-  movwf   event_queue_extract
+  ; Advance event extract offset to start of next slot, wrap round end of queue
+  movlw   EVENT_QUEUE_SLOT_LENGTH
+  addwf   event_queue_extract, F
 
   return
 
