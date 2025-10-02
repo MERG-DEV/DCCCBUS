@@ -130,10 +130,9 @@ SLIM_LED_BIT   equ 7  ; Green LED
 
 DCC_PREAMBLE_COUNT  equ 10
 DCC_BYTE_BIT_COUT   equ  8
-#define  DCC_NEW_BYTE_FLAG     dcc_rx_status, 7
-#define  DCC_NEW_PACKET_FLAG   dcc_rx_status, 6
-#define  DCC_BAD_PACKET_FLAG   dcc_rx_status, 5
-#define  DCC_SYNCHRONISE_FLAG  dcc_rx_status, 4
+#define  DCC_NEW_PACKET_FLAG   dcc_rx_status, 7
+#define  DCC_BAD_PACKET_FLAG   dcc_rx_status, 6
+#define  DCC_SYNCHRONISE_FLAG  dcc_rx_status, 5
 
 DCC_ACC_BYTE1_MASK        equ b'11000000'
 DCC_ACC_BYTE1_TEST        equ b'10000000'
@@ -367,7 +366,29 @@ end_of_dcc_byte
   movf    dcc_rx_shift_register, W
   xorwf   dcc_rx_checksum, F
   movwf   dcc_rx_byte
-  bsf     DCC_NEW_BYTE_FLAG
+
+  movf    dcc_packet_byte_count, W
+  btfss   STATUS, Z         ; Skip if first byte of packet
+  bra     store_next_dcc_byte
+
+  movff   dcc_packet_queue_insert, FSR0L
+  movf    INDF0, F
+  btfss   STATUS, Z         ; Skip if queued packet slot is useable
+  bra     dcc_bit_done
+
+store_next_dcc_byte
+  andlw   ~(DCC_QUEUE_SLOT_LENGTH - 1)
+  btfss   STATUS, Z         ; Skip if not past end of slot
+  bra     count_dcc_bytes
+
+  incf    dcc_packet_queue_insert, F
+  movff   dcc_packet_queue_insert, FSR0L
+  movff   dcc_rx_byte, INDF0
+
+count_dcc_bytes
+  incf    dcc_packet_byte_count, W
+  btfss   STATUS, Z         ; Avoid roll over to zero
+  movwf   dcc_packet_byte_count
   bra     dcc_bit_done
 
 dcc_packet_bad
@@ -565,11 +586,8 @@ slim_setup
 main_loop
   clrwdt
 
-  btfsc   DCC_NEW_BYTE_FLAG
-  call    store_new_dcc_byte
-
   btfsc   DCC_NEW_PACKET_FLAG
-  call    verify_new_dcc_packet
+  call    verify_and_enqueue_new_dcc_packet
 
   btfsc   DCC_BAD_PACKET_FLAG
   call    ignore_bad_dcc_packet
@@ -583,38 +601,7 @@ main_loop
 
 
 ;**********************************************************************
-store_new_dcc_byte
-
-  bcf     DCC_NEW_BYTE_FLAG
-
-  movf    dcc_packet_byte_count, W
-  btfss   STATUS, Z         ; Skip if first byte of packet
-  bra     store_next_dcc_byte
-
-  movff   dcc_packet_queue_insert, FSR1L
-  movf    INDF1, F
-  btfss   STATUS, Z         ; Skip if queued packet slot is useable
-  return
-
-store_next_dcc_byte
-  andlw   ~(DCC_QUEUE_SLOT_LENGTH - 1)
-  btfss   STATUS, Z         ; Skip if not past end of slot
-  bra     count_dcc_bytes
-
-  incf    dcc_packet_queue_insert, F
-  movff   dcc_packet_queue_insert, FSR1L
-  movff   dcc_rx_byte, INDF1
-
-count_dcc_bytes
-  incf    dcc_packet_byte_count, W
-  btfss   STATUS, Z         ; Avoid roll over to zero
-  movwf   dcc_packet_byte_count
-
-  return
-
-
-;**********************************************************************
-verify_new_dcc_packet
+verify_and_enqueue_new_dcc_packet
 
   bcf     DCC_NEW_PACKET_FLAG
 
@@ -771,7 +758,7 @@ enqueue_cbus_events_for_tx
   btfsc   STATUS, Z             ; Skip if not past end of queue
   movwf   dcc_packet_queue_extract
 
-  bra     enqueue_cbus_events_for_tx
+  return
 
 ;**********************************************************************
 transmit_next_cbus_event
