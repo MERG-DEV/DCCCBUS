@@ -13,6 +13,19 @@
 ;   Generate a CBUS short event message for accessory packet received *
 ;   on DCC bus.                                                       *
 ;                                                                     *
+;   Received DCC packets and outgoing CBUS events are buffered in     *
+;   cyclic queues each occupying a dedicated RAM banks.               *
+;   Both queues have 16 slots each of 16 bytes to give a total of 256 *
+;   bytes. This simplifies indexing arithmetic as the 8 bit indices   *
+;   will rollover from 255 back to 0.                                 *
+;   When the extract index is the same as the insert index the queue  *
+;   is empty. When the extract index is one slot ahead of the insert  *
+;   index the queue is full.                                          *
+;                                                                     *
+;   During interrupts FSR0 accesses the received DCC packet queue.    *
+;   Outside interrupts FSR1 accesses both the received DCC packet and *
+;   CBUS event transmission queues.                                   *
+;                                                                     *
 ;**********************************************************************
 ;                                                                     *
 ;    5 Jun 2025 - Chris White:                                        *
@@ -140,33 +153,19 @@ DCC_BASIC_ACC_BYTE2_MASK  equ b'10001000'
 DCC_BASIC_ACC_BYTE2_TEST  equ b'10001000'
 DCC_PACKET_LENGTH         equ 3
 
-; Received DCC packets and outgoing CBUS events are buffered in cyclic queues
-; which reside contiguously in Bank 1. To simplify index arithmetic packet
-; queue slots are eight bytes in length, event queue slots are four bytes in
-; length, and each queue contains sixteen slots.
-;
-; The first byte of each slot indicates the length of the packet or the opcode
-; of the event in the slot but is not set until an entire packet or event is
-; queued so a non zero first byte indicates the slot is ready for extraction
-; from the queue.
-;
-; Queues are accessed using FSR0 during interrupts and FSR1 outside interrupts.
+PACKET_QUEUE_SLOT_LENGTH  equ 16
+PACKET_QUEUE_SLOT_COUNT   equ 16
 
-QUEUE_BASE  equ 0x100
+PACKET_QUEUE_SIZE   equ PACKET_QUEUE_SLOT_LENGTH * PACKET_QUEUE_SLOT_COUNT
+PACKET_QUEUE_START  equ 0x100
+BEYOND_DCC_QUEUE    equ PACKET_QUEUE_START + PACKET_QUEUE_SIZE
 
-DCC_QUEUE_SLOT_LENGTH  equ  8
-DCC_QUEUE_SLOT_COUNT   equ 16
+EVENT_QUEUE_SLOT_LENGTH  equ 16
+EVENT_QUEUE_SLOT_COUNT   equ 16
 
-DCC_QUEUE_SIZE    equ DCC_QUEUE_SLOT_LENGTH * DCC_QUEUE_SLOT_COUNT
-DCC_QUEUE_START   equ QUEUE_BASE
-BEYOND_DCC_QUEUE  equ DCC_QUEUE_START + DCC_QUEUE_SIZE
-
-TX_QUEUE_SLOT_LENGTH  equ  4
-TX_QUEUE_SLOT_COUNT   equ 16
-
-TX_QUEUE_SIZE    equ TX_QUEUE_SLOT_LENGTH * TX_QUEUE_SLOT_COUNT
-TX_QUEUE_START   equ BEYOND_DCC_QUEUE
-BEYOND_TX_QUEUE  equ TX_QUEUE_START + TX_QUEUE_SIZE
+EVENT_QUEUE_SIZE   equ EVENT_QUEUE_SLOT_LENGTH * EVENT_QUEUE_SLOT_COUNT
+EVENT_QUEUE_START  equ 0x200
+BEYOND_TX_QUEUE    equ EVENT_QUEUE_START + EVENT_QUEUE_SIZE
 
 
   nolist
@@ -377,7 +376,7 @@ end_of_dcc_byte
   bra     dcc_bit_done
 
 store_next_dcc_byte
-  andlw   ~(DCC_QUEUE_SLOT_LENGTH - 1)
+  andlw   ~(PACKET_QUEUE_SLOT_LENGTH - 1)
   btfss   STATUS, Z         ; Skip if not past end of slot
   bra     count_dcc_bytes
 
@@ -442,7 +441,9 @@ initialisation
 
   lfsr    FSR0, 0x000       ; Clear data memory bank 0
   call    ram_clear_loop
-  lfsr    FSR0, QUEUE_BASE  ; Clear DCC packet and event Tx queues memory bank
+  lfsr    FSR0, PACKET_QUEUE_START
+  call    ram_clear_loop
+  lfsr    FSR0, EVENT_QUEUE_START
   call    ram_clear_loop
 
   ; Turn off  A/D, all bits digital I/O
@@ -546,17 +547,13 @@ can_normal_wait
                             ;          Assign 1:4 prescaler, 1 uSec tick
   movwf   T0CON
 
-  ; FSR0, during interrupt, and FSR1, outside interrupt, will be used to access
-  ; received DCC packet and outgoing CBUS message queues which reside
-  ; contiguously in the same memory bank
-  lfsr    FSR0, QUEUE_BASE
-  lfsr    FSR1, QUEUE_BASE
+  lfsr    FSR0, PACKET_QUEUE_START
 
-  movlw   low DCC_QUEUE_START
+  movlw   low PACKET_QUEUE_START
   movwf   dcc_packet_queue_insert
   movwf   dcc_packet_queue_extract
 
-  movlw   low TX_QUEUE_START
+  movlw   low EVENT_QUEUE_START
   movwf   event_queue_insert
   movwf   event_queue_extract
 
@@ -587,7 +584,7 @@ main_loop
   clrwdt
 
   btfsc   DCC_NEW_PACKET_FLAG
-  call    verify_and_enqueue_new_dcc_packet
+  call    verify_and_enqueue_dcc_packet
 
   btfsc   DCC_BAD_PACKET_FLAG
   call    ignore_bad_dcc_packet
@@ -601,14 +598,15 @@ main_loop
 
 
 ;**********************************************************************
-verify_and_enqueue_new_dcc_packet
+verify_and_enqueue_dcc_packet
 
   bcf     DCC_NEW_PACKET_FLAG
 
   ; Reset insert pointer to start of slot
-  movlw   ~(DCC_QUEUE_SLOT_LENGTH - 1)
+  movlw   ~(PACKET_QUEUE_SLOT_LENGTH - 1)
   andwf   dcc_packet_queue_insert, F
 
+  lfsr    FSR1, PACKET_QUEUE_START
   incf    dcc_packet_queue_insert, W
   movwf   FSR1L             ; FSR1 points to first byte of queued packet
 
@@ -635,11 +633,11 @@ verify_and_enqueue_new_dcc_packet
   movff   dcc_packet_byte_count, INDF1
 
   ; Move insert pointer on to start of next slot, wrapping around end of queue
-  movlw   DCC_QUEUE_SLOT_LENGTH
+  movlw   PACKET_QUEUE_SLOT_LENGTH
   addwf   dcc_packet_queue_insert, W
   movwf   dcc_packet_queue_insert
   xorlw   low BEYOND_DCC_QUEUE
-  movlw   low DCC_QUEUE_START
+  movlw   low PACKET_QUEUE_START
   btfsc   STATUS, Z         ; Skip if not past end of queue
   movwf   dcc_packet_queue_insert
 
@@ -655,7 +653,7 @@ ignore_bad_dcc_packet
   bcf     DCC_BAD_PACKET_FLAG
 
   ; Reset insert pointer to start of current slot
-  movlw   ~(DCC_QUEUE_SLOT_LENGTH - 1)
+  movlw   ~(PACKET_QUEUE_SLOT_LENGTH - 1)
   andwf   dcc_packet_queue_insert, F
 
   clrf    dcc_packet_byte_count ; Packet was bad so ignore bytes received
@@ -666,11 +664,13 @@ ignore_bad_dcc_packet
 ;**********************************************************************
 enqueue_cbus_events_for_tx
 
+  lfsr    FSR1, EVENT_QUEUE_START
   movff   event_queue_insert, FSR1L
   movf    INDF1, F
   btfss   STATUS, Z         ; Skip if event Tx slot useable
   return
 
+  lfsr    FSR1, PACKET_QUEUE_START
   movff   dcc_packet_queue_extract, FSR1L
   movf    INDF1, F
   btfsc   STATUS, Z         ; Skip if queued packet available
@@ -729,6 +729,7 @@ enqueue_cbus_events_for_tx
   decf    event_num_high, F ; ... else borrow from high byte
 
   ; Enqueue event
+  lfsr    FSR1, EVENT_QUEUE_START
   movff   event_queue_insert, FSR1L
   movff   event_opcode, POSTINC1
   movff   event_num_high, POSTINC1
@@ -737,24 +738,25 @@ enqueue_cbus_events_for_tx
   ; Move event insert pointer on to start of next slot, wrapping around end of
   ; queue
   movf    event_queue_insert, W
-  addlw   TX_QUEUE_SLOT_LENGTH
+  addlw   EVENT_QUEUE_SLOT_LENGTH
   movwf   event_queue_insert
   xorlw   low BEYOND_TX_QUEUE
-  movlw   low TX_QUEUE_START
+  movlw   low EVENT_QUEUE_START
   btfsc   STATUS, Z             ; Skip if not past end of queue
   movwf   event_queue_insert
 
   ; Clear first byte of packet slot, length, so it can be reused
+  lfsr    FSR1, PACKET_QUEUE_START
   movff   dcc_packet_queue_extract, FSR1L
   clrf    INDF1
 
   ; Move packet extract pointer on to start of next slot, wrapping around end
   ; of queue
   movf    dcc_packet_queue_extract, W
-  addlw   DCC_QUEUE_SLOT_LENGTH
+  addlw   PACKET_QUEUE_SLOT_LENGTH
   movwf   dcc_packet_queue_extract
   xorlw   low BEYOND_DCC_QUEUE
-  movlw   low DCC_QUEUE_START
+  movlw   low PACKET_QUEUE_START
   btfsc   STATUS, Z             ; Skip if not past end of queue
   movwf   dcc_packet_queue_extract
 
@@ -763,6 +765,7 @@ enqueue_cbus_events_for_tx
 ;**********************************************************************
 transmit_next_cbus_event
 
+  lfsr    FSR1, EVENT_QUEUE_START
   movff   event_queue_extract, FSR1L
   movf    INDF1, F
   btfsc   STATUS, Z         ; Skip if queued event available
@@ -783,10 +786,10 @@ transmit_next_cbus_event
   ; Move event extract pointer on to start of next slot, wrapping around end of
   ; queue
   movf    event_queue_extract, W
-  addlw   TX_QUEUE_SLOT_LENGTH
+  addlw   EVENT_QUEUE_SLOT_LENGTH
   movwf   event_queue_extract
   xorlw   low BEYOND_TX_QUEUE
-  movlw   low TX_QUEUE_START
+  movlw   low EVENT_QUEUE_START
   btfsc   STATUS, Z             ; Skip if not past end of queue
   movwf   event_queue_extract
 
