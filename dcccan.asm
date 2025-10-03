@@ -287,8 +287,7 @@ end_of_dcc_bit
   cpfslt  TMR0H
   bra     dcc_packet_bad    ; Longer than allowed for 0 half bit
 
-  movf    TMR0H, F
-  btfss   STATUS, Z
+  tstfsz  TMR0H
   bra     seen_dcc_zero     ; Longer than 255 uSec so must be 0 half bit
 
   movlw   low (90 - 1)
@@ -296,13 +295,11 @@ end_of_dcc_bit
   bra     not_dcc_zero      ; Shorter than 90 uSec so cannot be 0 half bit
 
 seen_dcc_zero
-  movf    dcc_preamble_downcounter, F
-  btfss   STATUS, Z
-  bra     dcc_packet_bad    ; Zero received whilst expecting preamble
+  tstfsz  dcc_preamble_downcounter  ; Skip if seen minimum preamble
+  bra     dcc_packet_bad            ; Zero seen whilst still expecting preamble
 
   bcf     STATUS, C
-  movf    dcc_byte_bit_downcounter, F
-  btfss   STATUS, Z         ; Skip if not receiving a byte
+  tstfsz  dcc_byte_bit_downcounter  ; Skip if not currently receiving a byte
   bra     shift_dcc_bit_into_byte
 
 start_of_dcc_byte
@@ -331,13 +328,11 @@ seen_dcc_one
 
 not_dcc_preamble
   bsf     STATUS, C
-  movf    dcc_byte_bit_downcounter, F
-  btfss   STATUS, Z         ; Skip if not receiving a byte
+  tstfsz  dcc_byte_bit_downcounter  ; Skip if not receiving a byte
   bra     shift_dcc_bit_into_byte
 
 end_of_dcc_packet
-  movf    dcc_rx_checksum, F
-  btfss   STATUS, Z         ; Skip if checksum verification passes
+  tstfsz  dcc_rx_checksum   ; Skip if checksum verification passes
   bra     dcc_packet_bad
 
   ; Reset insert offset to start of current slot
@@ -354,7 +349,7 @@ end_of_dcc_packet
   cpfseq  dcc_packet_queue_extract  ; Skip if queue is full
   movwf   dcc_packet_queue_insert
 
-  movlw   DCC_PREAMBLE_COUNT - 1
+  movlw   DCC_PREAMBLE_COUNT - 1    ; End of packet marker counts as preamble
 
 dcc_packet_done
   movwf   dcc_preamble_downcounter
@@ -389,8 +384,7 @@ end_of_dcc_byte
   bra     store_next_dcc_byte
 
   movff   dcc_packet_queue_insert, FSR0L
-  movf    INDF0, F
-  btfss   STATUS, Z         ; Skip if queued packet slot is useable
+  tstfsz  INDF0             ; Skip if queued packet slot is useable
   bra     dcc_bit_done
 
 store_next_dcc_byte
