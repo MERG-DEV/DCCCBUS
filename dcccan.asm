@@ -397,8 +397,7 @@ store_next_dcc_byte
   movff   dcc_rx_byte, INDF0
 
 count_dcc_bytes
-  incf    dcc_packet_byte_count, W
-  btfss   STATUS, Z         ; Avoid roll over to zero
+  incfsz  dcc_packet_byte_count, W  ; Avoid roll over to zero
   movwf   dcc_packet_byte_count
   bra     dcc_bit_done
 
