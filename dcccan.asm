@@ -143,9 +143,7 @@ SLIM_LED_BIT   equ 7  ; Green LED
 
 DCC_PREAMBLE_COUNT  equ 10
 DCC_BYTE_BIT_COUT   equ  8
-#define  DCC_NEW_PACKET_FLAG   dcc_rx_status, 7
-#define  DCC_BAD_PACKET_FLAG   dcc_rx_status, 6
-#define  DCC_SYNCHRONISE_FLAG  dcc_rx_status, 5
+#define  DCC_SYNCHRONISE_FLAG  dcc_rx_status, 7
 
 DCC_ACC_BYTE1_MASK        equ b'11000000'
 DCC_ACC_BYTE1_TEST        equ b'10000000'
@@ -179,10 +177,7 @@ EVENT_QUEUE_SLOT_LENGTH  equ 16
   dcc_rx_checksum
   dcc_rx_shift_register
   dcc_rx_byte
-  dcc_rx_status             ; bit 7 - New Rx byte ready
-                            ; bit 6 - New packet ready
-                            ; bit 5 - Bad packet
-                            ; bit 4 - Waiting for end of preamble
+  dcc_rx_status             ; bit 7 - Synchronising to end of preamble
   dcc_packet_byte_count
 
   dcc_packet_queue_insert
@@ -345,7 +340,38 @@ end_of_dcc_packet
   btfss   STATUS, Z         ; Skip if checksum verification passes
   bra     dcc_packet_bad
 
-  bsf     DCC_NEW_PACKET_FLAG
+  ; Reset insert offset to start of current slot
+  movlw   ~(PACKET_QUEUE_SLOT_LENGTH - 1)
+  andwf   dcc_packet_queue_insert, F
+
+  movff   dcc_packet_queue_insert, FSR0L
+  movff   dcc_packet_byte_count, INDF0
+  clrf    dcc_packet_byte_count
+
+  ; Advance insert offset to start of next slot, wrap round end of queue
+  movlw   PACKET_QUEUE_SLOT_LENGTH
+  addwf   dcc_packet_queue_insert, W
+  cpfseq  dcc_packet_queue_extract  ; Skip if queue is full
+  movwf   dcc_packet_queue_insert
+
+  movlw   DCC_PREAMBLE_COUNT - 1
+
+dcc_packet_done
+  movwf   dcc_preamble_downcounter
+  bsf     DCC_SYNCHRONISE_FLAG
+
+  clrf    dcc_byte_bit_downcounter
+  clrf    dcc_rx_checksum
+  bra     dcc_bit_done
+
+dcc_packet_bad
+  ; Reset insert pointer to start of current slot
+  movlw   ~(PACKET_QUEUE_SLOT_LENGTH - 1)
+  andwf   dcc_packet_queue_insert, F
+
+  clrf    dcc_packet_byte_count ; Packet was bad so ignore any bytes received
+
+  movlw   DCC_PREAMBLE_COUNT
   bra     dcc_packet_done
 
 shift_dcc_bit_into_byte
@@ -381,18 +407,6 @@ count_dcc_bytes
   btfss   STATUS, Z         ; Avoid roll over to zero
   movwf   dcc_packet_byte_count
   bra     dcc_bit_done
-
-dcc_packet_bad
-  bsf     DCC_BAD_PACKET_FLAG
-
-dcc_packet_done
-  bsf     DCC_SYNCHRONISE_FLAG
-  movlw   DCC_PREAMBLE_COUNT
-  movwf   dcc_preamble_downcounter
-  btfss   DCC_NEW_PACKET_FLAG
-  decf    dcc_preamble_downcounter, F   ; Packet end bit counts as preamble
-  clrf    dcc_byte_bit_downcounter
-  clrf    dcc_rx_checksum
 
 dcc_bit_done
   bcf     INTCON, INT0IF    ; Re-enable INT0 interrupts
@@ -575,13 +589,7 @@ slim_setup
 main_loop
   clrwdt
 
-  btfsc   DCC_NEW_PACKET_FLAG
-  call    verify_and_enqueue_dcc_packet
-
-  btfsc   DCC_BAD_PACKET_FLAG
-  call    ignore_bad_dcc_packet
-
-  call    enqueue_cbus_events_for_tx
+  call    enqueue_cbus_event_for_tx
 
   btfss   TXB1CON, TXREQ
   call    transmit_next_cbus_event
@@ -590,77 +598,38 @@ main_loop
 
 
 ;**********************************************************************
-verify_and_enqueue_dcc_packet
+enqueue_cbus_event_for_tx
 
-  bcf     DCC_NEW_PACKET_FLAG
+  lfsr    FSR1, EVENT_QUEUE_START
+  movff   event_queue_insert, FSR1L
+  tstfsz  INDF1             ; Skip if event Tx slot useable, queue not full
+  return
 
-  ; Reset insert offset to start of current slot
-  movlw   ~(PACKET_QUEUE_SLOT_LENGTH - 1)
-  andwf   dcc_packet_queue_insert, F
-
-  incf    dcc_packet_queue_insert, W
   lfsr    FSR1, PACKET_QUEUE_START
-  movwf   FSR1L             ; FSR1 points to first byte of queued packet
+  movff   dcc_packet_queue_extract, FSR1L
+  movf    INDF1, F
+  btfsc   STATUS, Z         ; Skip if queued packet available, queue not empty
+  return
+
+  movlw   DCC_PACKET_LENGTH
+  cpfseq  INDF1             ; Skip if got expected byte count for packet
+  bra     skip_dcc_packet
+
+  incf    FSR1L             ; FSR1 points to first byte of queued packet
 
   movlw   DCC_ACC_BYTE1_MASK
-  andwf   POSTINC1, W       ; FSR1 points to second byte of queued packet
+  andwf   INDF1, W
   xorlw   DCC_ACC_BYTE1_TEST
   btfss   STATUS, Z         ; Skip if first byte verification passes
   bra     skip_dcc_packet
+
+  incf    FSR1L             ; FSR1 points to second byte of queued packet
 
   movlw   DCC_BASIC_ACC_BYTE2_MASK
   andwf   INDF1, W
   xorlw   DCC_BASIC_ACC_BYTE2_TEST
   btfss   STATUS, Z         ; Skip if second byte verification passes
   bra     skip_dcc_packet
-
-  movlw   DCC_PACKET_LENGTH
-  cpfseq  dcc_packet_byte_count ; Skip if got expected byte count for packet
-  bra     skip_dcc_packet
-
-  movff   dcc_packet_queue_insert, FSR1L
-  movff   dcc_packet_byte_count, INDF1
-
-  ; Advance insert offset to start of next slot, wrap round end of queue
-  movlw   PACKET_QUEUE_SLOT_LENGTH
-  addwf   dcc_packet_queue_insert, F
-
-skip_dcc_packet
-  clrf    dcc_packet_byte_count
-
-  return
-
-
-;**********************************************************************
-ignore_bad_dcc_packet
-
-  bcf     DCC_BAD_PACKET_FLAG
-
-  ; Reset insert pointer to start of current slot
-  movlw   ~(PACKET_QUEUE_SLOT_LENGTH - 1)
-  andwf   dcc_packet_queue_insert, F
-
-  clrf    dcc_packet_byte_count ; Packet was bad so ignore any bytes received
-
-  return
-
-
-;**********************************************************************
-enqueue_cbus_events_for_tx
-
-  lfsr    FSR1, EVENT_QUEUE_START
-  movff   event_queue_insert, FSR1L
-  tstfsz  INDF1             ; Skip if event Tx slot useable
-  return
-
-  lfsr    FSR1, PACKET_QUEUE_START
-  movff   dcc_packet_queue_extract, FSR1L
-  movf    INDF1, F
-  btfsc   STATUS, Z         ; Skip if queued packet available
-  return
-
-  movlw   2
-  addwf   FSR1L, F          ; FSR1 points to second byte of queued packet
 
   ; Decode simple accessory decoder output address from RCN-213
   ;
@@ -717,6 +686,7 @@ enqueue_cbus_events_for_tx
   movlw   EVENT_QUEUE_SLOT_LENGTH
   addwf   event_queue_insert, F
 
+skip_dcc_packet
   ; Clear first byte of packet slot, length, so it can be reused
   lfsr    FSR1, PACKET_QUEUE_START
   movff   dcc_packet_queue_extract, FSR1L
