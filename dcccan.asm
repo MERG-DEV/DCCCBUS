@@ -711,13 +711,21 @@ transmit_next_cbus_event
 
   banksel TXB1D0
 
-  movff   POSTINC1, TXB1D0  ; Opcode
-  movff   POSTINC1, TXB1D1  ; Node number high
-  movff   POSTINC1, TXB1D2  ; Node number low
-  movff   POSTINC1, TXB1D3  ; Event number high
-  movff   POSTINC1, TXB1D4  ; Event number low
+  ; Number of bytes for transmission derived from opcode
+  swapf   INDF1, W
+  rrncf   WREG, W
+  andlw   0x07
+  incf    WREG, W
 
-  movlw   5
+  movff   POSTINC1, TXB1D0  ; Opcode
+  movff   POSTINC1, TXB1D1
+  movff   POSTINC1, TXB1D2
+  movff   POSTINC1, TXB1D3
+  movff   POSTINC1, TXB1D4
+  movff   POSTINC1, TXB1D5
+  movff   POSTINC1, TXB1D6
+  movff   POSTINC1, TXB1D7
+
   movwf   TXB1DLC           ; Number of bytes for transmission
 
   bsf     TXB1CON, TXREQ

@@ -83,7 +83,23 @@ define(tx_wait_for_message,
        {tx_test_data(TXB1D4, $10,  $11)}
        {tx_test_data(TXB1D5, $12,  $13)}
        {tx_test_data(TXB1D6, $14,  $15)}
-       {tx_test_data(TXB1D7, $16,  $17)})
+       {tx_test_data(TXB1D7, $16,  $17)}
+       {tx_test_data(TXB1DLC, ifelse($16, {},
+                                ifelse($14, {},
+                                  ifelse($12, {},
+                                    ifelse($10, {},
+                                      ifelse($8, {},
+                                        ifelse($6, {},
+                                          ifelse($4, {},
+                                            ifelse($2, {},
+                                                    1),
+                                                  2),
+                                                3),
+                                              4),
+                                            5),
+                                          6),
+                                        7),
+                                      8), Frame length)})
 
 define(tx_wait_for_node_message,
        {tx_wait_for_message(node message, $1, Opcode, $2, Node Number (high),
