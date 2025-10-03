@@ -151,11 +151,11 @@ DCC_BASIC_ACC_BYTE2_MASK  equ b'10001000'
 DCC_BASIC_ACC_BYTE2_TEST  equ b'10001000'
 DCC_PACKET_LENGTH         equ 3
 
-PACKET_QUEUE_START        equ 0x100
-PACKET_QUEUE_SLOT_LENGTH  equ 16
+PACKET_RX_QUEUE_START        equ 0x100
+PACKET_RX_QUEUE_SLOT_LENGTH  equ 16
 
-EVENT_QUEUE_START        equ 0x200
-EVENT_QUEUE_SLOT_LENGTH  equ 16
+EVENT_TX_QUEUE_START        equ 0x200
+EVENT_TX_QUEUE_SLOT_LENGTH  equ 16
 
 
   nolist
@@ -180,15 +180,15 @@ EVENT_QUEUE_SLOT_LENGTH  equ 16
   dcc_rx_status             ; bit 7 - Synchronising to end of preamble
   dcc_packet_byte_count
 
-  dcc_packet_queue_insert
-  dcc_packet_queue_extract
+  dcc_packet_rx_queue_insert
+  dcc_packet_rx_queue_extract
+
+  event_tx_queue_insert
+  event_tx_queue_extract
 
   event_opcode
   event_num_low
   event_num_high
-
-  event_queue_insert
-  event_queue_extract
 
   ENDC
 #if (0xFF) < (event_num_high)
@@ -303,6 +303,12 @@ seen_dcc_zero
   bra     shift_dcc_bit_into_byte
 
 start_of_dcc_byte
+  movlw   ~(PACKET_RX_QUEUE_SLOT_LENGTH - 1)
+  andwf   dcc_packet_rx_queue_insert, W
+  movwf   FSR0L
+  tstfsz  INDF0             ; Test first byte of packet Rx queue slot, length
+  bra     dcc_packet_bad    ; Received packet slot not available, skip packet
+
   bcf     DCC_SYNCHRONISE_FLAG
   movlw   DCC_BYTE_BIT_COUT
   movwf   dcc_byte_bit_downcounter
@@ -336,35 +342,31 @@ end_of_dcc_packet
   bra     dcc_packet_bad
 
   ; Reset insert offset to start of current slot
-  movlw   ~(PACKET_QUEUE_SLOT_LENGTH - 1)
-  andwf   dcc_packet_queue_insert, F
+  movlw   ~(PACKET_RX_QUEUE_SLOT_LENGTH - 1)
+  andwf   dcc_packet_rx_queue_insert, F
 
-  movff   dcc_packet_queue_insert, FSR0L
+  ; Set first byte of packet slot, length, marking ready for processing
+  movff   dcc_packet_rx_queue_insert, FSR0L
   movff   dcc_packet_byte_count, INDF0
-  clrf    dcc_packet_byte_count
 
   ; Advance insert offset to start of next slot, wrap round end of queue
-  movlw   PACKET_QUEUE_SLOT_LENGTH
-  addwf   dcc_packet_queue_insert, W
-  cpfseq  dcc_packet_queue_extract  ; Skip if queue is full
-  movwf   dcc_packet_queue_insert
+  movlw   PACKET_RX_QUEUE_SLOT_LENGTH
+  addwf   dcc_packet_rx_queue_insert, F
 
   movlw   DCC_PREAMBLE_COUNT - 1    ; End of packet marker counts as preamble
 
 dcc_packet_done
-  movwf   dcc_preamble_downcounter
+  movwf   dcc_preamble_downcounter  ; Set minimum length of preamble required
   bsf     DCC_SYNCHRONISE_FLAG
-
+  clrf    dcc_packet_byte_count
   clrf    dcc_byte_bit_downcounter
   clrf    dcc_rx_checksum
   bra     dcc_bit_done
 
 dcc_packet_bad
-  ; Reset insert pointer to start of current slot
-  movlw   ~(PACKET_QUEUE_SLOT_LENGTH - 1)
-  andwf   dcc_packet_queue_insert, F
-
-  clrf    dcc_packet_byte_count ; Packet was bad so ignore any bytes received
+  ; Reset insert offset to start of current slot
+  movlw   ~(PACKET_RX_QUEUE_SLOT_LENGTH - 1)
+  andwf   dcc_packet_rx_queue_insert, F
 
   movlw   DCC_PREAMBLE_COUNT
   bra     dcc_packet_done
@@ -383,17 +385,17 @@ end_of_dcc_byte
   btfss   STATUS, Z         ; Skip if first byte of packet
   bra     store_next_dcc_byte
 
-  movff   dcc_packet_queue_insert, FSR0L
+  movff   dcc_packet_rx_queue_insert, FSR0L
   tstfsz  INDF0             ; Skip if queued packet slot is useable
   bra     dcc_bit_done
 
 store_next_dcc_byte
-  andlw   ~(PACKET_QUEUE_SLOT_LENGTH - 1)
+  andlw   ~(PACKET_RX_QUEUE_SLOT_LENGTH - 1)
   btfss   STATUS, Z         ; Skip if not past end of slot
   bra     count_dcc_bytes
 
-  incf    dcc_packet_queue_insert, F
-  movff   dcc_packet_queue_insert, FSR0L
+  incf    dcc_packet_rx_queue_insert, F
+  movff   dcc_packet_rx_queue_insert, FSR0L
   movff   dcc_rx_byte, INDF0
 
 count_dcc_bytes
@@ -440,9 +442,9 @@ initialisation
 
   lfsr    FSR0, 0x000       ; Clear data memory bank 0
   call    ram_clear_loop
-  lfsr    FSR0, PACKET_QUEUE_START
+  lfsr    FSR0, PACKET_RX_QUEUE_START
   call    ram_clear_loop
-  lfsr    FSR0, EVENT_QUEUE_START
+  lfsr    FSR0, EVENT_TX_QUEUE_START
   call    ram_clear_loop
 
   ; Turn off  A/D, all bits digital I/O
@@ -546,15 +548,15 @@ can_normal_wait
                             ;          Assign 1:4 prescaler, 1 uSec tick
   movwf   T0CON
 
-  lfsr    FSR0, PACKET_QUEUE_START
+  lfsr    FSR0, PACKET_RX_QUEUE_START
 
-  movlw   low PACKET_QUEUE_START
-  movwf   dcc_packet_queue_insert
-  movwf   dcc_packet_queue_extract
+  movlw   low PACKET_RX_QUEUE_START
+  movwf   dcc_packet_rx_queue_insert
+  movwf   dcc_packet_rx_queue_extract
 
-  movlw   low EVENT_QUEUE_START
-  movwf   event_queue_insert
-  movwf   event_queue_extract
+  movlw   low EVENT_TX_QUEUE_START
+  movwf   event_tx_queue_insert
+  movwf   event_tx_queue_extract
 
   ; DCC reception to start seeking new packet on next rising edge
   bsf     INTCON2, INTEDG0  ; Next interrupt on rising edge, start of DCC bit
@@ -583,8 +585,6 @@ main_loop
   clrwdt
 
   call    enqueue_cbus_event_for_tx
-
-  btfss   TXB1CON, TXREQ
   call    transmit_next_cbus_event
 
   bra     main_loop
@@ -593,15 +593,15 @@ main_loop
 ;**********************************************************************
 enqueue_cbus_event_for_tx
 
-  lfsr    FSR1, EVENT_QUEUE_START
-  movff   event_queue_insert, FSR1L
-  tstfsz  INDF1             ; Skip if event Tx slot useable, queue not full
-  return
+  lfsr    FSR1, EVENT_TX_QUEUE_START
+  movff   event_tx_queue_insert, FSR1L
+  tstfsz  INDF1             ; Test first byte of event Tx slot, opcode
+  return                    ; Event Tx slot unavailable, do nothing
 
-  lfsr    FSR1, PACKET_QUEUE_START
-  movff   dcc_packet_queue_extract, FSR1L
-  movf    INDF1, F
-  btfsc   STATUS, Z         ; Skip if queued packet available, queue not empty
+  lfsr    FSR1, PACKET_RX_QUEUE_START
+  movff   dcc_packet_rx_queue_extract, FSR1L
+  movf    INDF1, F          ; Test first byte of packet Rx queue slot, length
+  btfsc   STATUS, Z         ; No received packet available, do nothing
   return
 
   movlw   DCC_PACKET_LENGTH
@@ -669,52 +669,66 @@ enqueue_cbus_event_for_tx
   decf    event_num_high, F ; ... else borrow from high byte
 
   ; Enqueue event
-  lfsr    FSR1, EVENT_QUEUE_START
-  movff   event_queue_insert, FSR1L
-  movff   event_opcode, POSTINC1
+  lfsr    FSR1, EVENT_TX_QUEUE_START
+  incf    event_tx_queue_insert, W
+  movwf   FSR1L
+  clrf    POSTINC1          ; Node number high
+  clrf    POSTINC1          ; Node number low
   movff   event_num_high, POSTINC1
   movff   event_num_low, INDF1
 
+  ; Set first byte of event Tx slot, opcode, marking it ready for transmission
+  movff   event_tx_queue_insert, FSR1L
+  movff   event_opcode, INDF1
+
   ; Advance event insert offset to start of next slot, wrap round end of queue
-  movlw   EVENT_QUEUE_SLOT_LENGTH
-  addwf   event_queue_insert, F
+  movlw   EVENT_TX_QUEUE_SLOT_LENGTH
+  addwf   event_tx_queue_insert, F
 
 skip_dcc_packet
-  ; Clear first byte of packet slot, length, so it can be reused
-  lfsr    FSR1, PACKET_QUEUE_START
-  movff   dcc_packet_queue_extract, FSR1L
+  ; Clear first byte of packet slot, length, marking it availabe for use
+  lfsr    FSR1, PACKET_RX_QUEUE_START
+  movff   dcc_packet_rx_queue_extract, FSR1L
   clrf    INDF1
 
   ; Advance packet extract offset to start of next slot, wrap round end of queue
-  movlw   PACKET_QUEUE_SLOT_LENGTH
-  addwf   dcc_packet_queue_extract, F
+  movlw   PACKET_RX_QUEUE_SLOT_LENGTH
+  addwf   dcc_packet_rx_queue_extract, F
 
   return
 
 ;**********************************************************************
 transmit_next_cbus_event
 
-  lfsr    FSR1, EVENT_QUEUE_START
-  movff   event_queue_extract, FSR1L
-  movf    INDF1, F
-  btfsc   STATUS, Z         ; Skip if queued event available
+  btfsc   TXB1CON, TXREQ
+  return
+
+  lfsr    FSR1, EVENT_TX_QUEUE_START
+  movff   event_tx_queue_extract, FSR1L
+  movf    INDF1, F          ; Test first byte of event Tx slot, opcode
+  btfsc   STATUS, Z         ; Skip if queued event ready for transmission
   return
 
   banksel TXB1D0
 
-  movlw   5
-  movwf   TXB1DLC
-  movff   INDF1, TXB1D0     ; Opcode
-  clrf    POSTINC1          ; Mark slot useable by clearing first byte
-  clrf    TXB1D1            ; Node number high
-  clrf    TXB1D2            ; Node number low
+  movff   POSTINC1, TXB1D0  ; Opcode
+  movff   POSTINC1, TXB1D1  ; Node number high
+  movff   POSTINC1, TXB1D2  ; Node number low
   movff   POSTINC1, TXB1D3  ; Event number high
   movff   POSTINC1, TXB1D4  ; Event number low
+
+  movlw   5
+  movwf   TXB1DLC           ; Number of bytes for transmission
+
   bsf     TXB1CON, TXREQ
 
+  ; Clear first byte of packet slot, opcode, marking it availabe for use
+  movff   event_tx_queue_extract, FSR1L
+  clrf    INDF1
+
   ; Advance event extract offset to start of next slot, wrap round end of queue
-  movlw   EVENT_QUEUE_SLOT_LENGTH
-  addwf   event_queue_extract, F
+  movlw   EVENT_TX_QUEUE_SLOT_LENGTH
+  addwf   event_tx_queue_extract, F
 
   return
 

@@ -1,6 +1,6 @@
 set_test_name()
 
-beginning_of_test(91)
+beginning_of_test(84)
     begin_test
       --
       configure_can
