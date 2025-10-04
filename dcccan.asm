@@ -175,7 +175,6 @@ EVENT_TX_QUEUE_SLOT_LENGTH  equ 16
   dcc_byte_bit_downcounter
   dcc_rx_checksum
   dcc_rx_shift_register
-  dcc_rx_byte
   dcc_packet_byte_count
 
   dcc_packet_rx_queue_insert
@@ -376,19 +375,18 @@ shift_dcc_bit_into_byte
   bra     dcc_bit_done      ; Still receiving a byte
 
 end_of_dcc_byte
-  movf    dcc_rx_shift_register, W
-  xorwf   dcc_rx_checksum, F
-  movwf   dcc_rx_byte
-
-  movf    dcc_packet_byte_count, W
-  andlw   ~(PACKET_RX_QUEUE_SLOT_LENGTH - 1)
-  btfss   STATUS, Z         ; Skip if not past end of slot
+  incf    dcc_packet_rx_queue_insert, W
+  andlw   PACKET_RX_QUEUE_SLOT_LENGTH - 1
+  btfsc   STATUS, Z         ; Skip if not past end of slot
   bra     count_dcc_bytes
 
 store_next_dcc_byte
   incf    dcc_packet_rx_queue_insert, F
   movff   dcc_packet_rx_queue_insert, FSR0L
-  movff   dcc_rx_byte, INDF0
+
+  movf    dcc_rx_shift_register, W
+  xorwf   dcc_rx_checksum, F
+  movwf   INDF0
 
 count_dcc_bytes
   incfsz  dcc_packet_byte_count, W  ; Avoid roll over to zero
