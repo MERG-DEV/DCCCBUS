@@ -93,6 +93,60 @@ define(input_dcc_basic_too_long_acc,
        -- End of Packet
        input_dcc_one)
 
+define(input_dcc_basic_overrun_slot_acc,
+       -- Preamble
+       {input_dcc_bits(eval(14, 1))}
+       -- Byte One
+       input_dcc_zero
+       {input_dcc_bits(acc_byte_1(1))}
+       -- Byte Two
+       input_dcc_zero
+       {input_dcc_bits(basic_acc_byte_2(1, Activate))}
+       -- Checksum
+       input_dcc_zero
+       {input_dcc_bits(checksum(acc_byte_1(1), basic_acc_byte_2(1, Activate)))}
+       -- Byte Four
+       input_dcc_zero
+       {input_dcc_bits(00000000)}
+       -- Byte Five
+       input_dcc_zero
+       {input_dcc_bits(00000000)}
+       -- Byte Six
+       input_dcc_zero
+       {input_dcc_bits(00000000)}
+       -- Byte Seven
+       input_dcc_zero
+       {input_dcc_bits(00000000)}
+       -- Byte Eight
+       input_dcc_zero
+       {input_dcc_bits(00000000)}
+       -- Byte Nine
+       input_dcc_zero
+       {input_dcc_bits(00000000)}
+       -- Byte Ten
+       input_dcc_zero
+       {input_dcc_bits(00000000)}
+       -- Byte Eleven
+       input_dcc_zero
+       {input_dcc_bits(00000000)}
+       -- Byte Twelve
+       input_dcc_zero
+       {input_dcc_bits(00000000)}
+       -- Byte Thirteen
+       input_dcc_zero
+       {input_dcc_bits(00000000)}
+       -- Byte Fourteen
+       input_dcc_zero
+       {input_dcc_bits(00000000)}
+       -- Byte Fifteen
+       input_dcc_zero
+       {input_dcc_bits(00000000)}
+       -- Byte Sixteen
+       input_dcc_zero
+       {input_dcc_bits(00000000)}
+       -- End of Packet
+       input_dcc_one)
+
 define(input_dcc_basic_bad_checksum_acc,
        {_input_dcc_basic_acc(eval(14, 1),
                              acc_byte_1(1),

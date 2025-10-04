@@ -378,7 +378,7 @@ end_of_dcc_byte
   incf    dcc_packet_rx_queue_insert, W
   andlw   PACKET_RX_QUEUE_SLOT_LENGTH - 1
   btfsc   STATUS, Z         ; Skip if not past end of slot
-  bra     count_dcc_bytes
+  bra     dcc_packet_bad
 
 store_next_dcc_byte
   incf    dcc_packet_rx_queue_insert, F
