@@ -18,9 +18,6 @@
 ;   Both queues have 16 slots each of 16 bytes to give a total of 256 *
 ;   bytes. This simplifies indexing arithmetic as the 8 bit indices   *
 ;   will rollover from 255 back to 0.                                 *
-;   When the extract index is the same as the insert index the queue  *
-;   is empty. When the extract index is one slot ahead of the insert  *
-;   index the queue is full.                                          *
 ;                                                                     *
 ;   During interrupts FSR0 accesses the received DCC packet queue.    *
 ;   Outside interrupts FSR1 accesses both the received DCC packet and *
@@ -114,7 +111,7 @@ NUMBER_OF_NODE_VARIABLES      equ 0
 NODE_FLAGS                    equ PF_PRODUCER
 
 CPU_TYPE  equ P18F2480
-BETA      equ 1            ; Firmware beta version (numeric, 0 = Release)
+BETA      equ 1                 ; Firmware beta version (numeric, 0 = Release)
 
 MAXIMUM_NUMBER_OF_CAN_IDS  equ 100  ; Maximum CAN Ids allowed in a CAN segment
 
@@ -127,23 +124,23 @@ NUMBER_OF_NODE_PARAMETERS  equ     24
 AFTER_NODE_PARAMETERS      equ NODE_PARAMETERS + NUMBER_OF_NODE_PARAMETERS
 
 FLIM_LED_PORT  equ LATB
-FLIM_LED_BIT   equ 6  ; Yellow LED
+FLIM_LED_BIT   equ 6            ; Yellow LED
 #define  FLiM_LED         FLIM_LED_PORT, FLIM_LED_BIT
 #define  Set_FLiM_LED_On  bsf FLiM_LED
 #define  Set_FLiM_LED_Off bcf FLiM_LED
 
 SLIM_LED_PORT  equ LATB
-SLIM_LED_BIT   equ 7  ; Green LED
+SLIM_LED_BIT   equ 7            ; Green LED
 #define  SLiM_LED         SLIM_LED_PORT, SLIM_LED_BIT
 #define  Set_SLiM_LED_On  bsf SLiM_LED
 #define  Set_SLiM_LED_Off bcf SLiM_LED
 
-#define  SETUP_INPUT PORTA, 5 ; Setup Switch
+#define  SETUP_INPUT PORTA, 5   ; Setup Switch
 #define  DCC_INPUT   PORTB,INT0
 
 DCC_PREAMBLE_COUNT  equ 10
 DCC_BYTE_BIT_COUT   equ  8
-#define  DCC_SYNCHRONISE_FLAG  dcc_rx_status, 7
+#define  DCC_SYNCHRONISE_FLAG  mode_and_state, 7
 
 DCC_ACC_BYTE1_MASK        equ b'11000000'
 DCC_ACC_BYTE1_TEST        equ b'10000000'
@@ -172,12 +169,13 @@ EVENT_TX_QUEUE_SLOT_LENGTH  equ 16
   hpint_STATUS
   hpint_W
 
+  mode_and_state             ; bit 7 - Synchronising to end of preamble
+
   dcc_preamble_downcounter
   dcc_byte_bit_downcounter
   dcc_rx_checksum
   dcc_rx_shift_register
   dcc_rx_byte
-  dcc_rx_status             ; bit 7 - Synchronising to end of preamble
   dcc_packet_byte_count
 
   dcc_packet_rx_queue_insert
@@ -295,7 +293,7 @@ end_of_dcc_bit
   bra     not_dcc_zero      ; Shorter than 90 uSec so cannot be 0 half bit
 
 seen_dcc_zero
-  tstfsz  dcc_preamble_downcounter  ; Skip if seen minimum preamble
+  tstfsz  dcc_preamble_downcounter  ; Skip if already seen minimum preamble
   bra     dcc_packet_bad            ; Zero seen whilst still expecting preamble
 
   bcf     STATUS, C
@@ -327,6 +325,7 @@ seen_dcc_one
   btfss   DCC_SYNCHRONISE_FLAG
   bra     not_dcc_preamble
 
+receiving_dcc_preamble
   decf    dcc_preamble_downcounter, W
   btfsc   STATUS, C         ; Avoid underflow from zero
   movwf   dcc_preamble_downcounter
@@ -382,18 +381,11 @@ end_of_dcc_byte
   movwf   dcc_rx_byte
 
   movf    dcc_packet_byte_count, W
-  btfss   STATUS, Z         ; Skip if first byte of packet
-  bra     store_next_dcc_byte
-
-  movff   dcc_packet_rx_queue_insert, FSR0L
-  tstfsz  INDF0             ; Skip if queued packet slot is useable
-  bra     dcc_bit_done
-
-store_next_dcc_byte
   andlw   ~(PACKET_RX_QUEUE_SLOT_LENGTH - 1)
   btfss   STATUS, Z         ; Skip if not past end of slot
   bra     count_dcc_bytes
 
+store_next_dcc_byte
   incf    dcc_packet_rx_queue_insert, F
   movff   dcc_packet_rx_queue_insert, FSR0L
   movff   dcc_rx_byte, INDF0
