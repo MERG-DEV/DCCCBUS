@@ -407,11 +407,11 @@ exit_low_priority_interrupt
 
 
 ;**********************************************************************
-ram_clear_loop
+clear_ram_loop
 
   clrf    POSTINC0
   tstfsz  FSR0L
-  bra     ram_clear_loop
+  bra     clear_ram_loop
 
   return
 
@@ -427,11 +427,11 @@ initialisation
                             ; INT0 interrupt on falling edge
 
   lfsr    FSR0, 0x000       ; Clear data memory bank 0
-  call    ram_clear_loop
+  call    clear_ram_loop
   lfsr    FSR0, PACKET_RX_QUEUE_START
-  call    ram_clear_loop
+  call    clear_ram_loop
   lfsr    FSR0, EVENT_TX_QUEUE_START
-  call    ram_clear_loop
+  call    clear_ram_loop
 
   ; Turn off  A/D, all bits digital I/O
   clrf    ADCON0
