@@ -175,7 +175,6 @@ EVENT_TX_QUEUE_SLOT_LENGTH  equ 16
   dcc_byte_bit_downcounter
   dcc_rx_checksum
   dcc_rx_shift_register
-  dcc_packet_byte_count
 
   dcc_packet_rx_queue_insert
   dcc_packet_rx_queue_extract
@@ -341,22 +340,24 @@ end_of_dcc_packet
 
   ; Reset insert offset to start of current slot
   movlw   ~(PACKET_RX_QUEUE_SLOT_LENGTH - 1)
-  andwf   dcc_packet_rx_queue_insert, F
+  andwf   dcc_packet_rx_queue_insert, W
+  movwf   FSR0L
 
   ; Set first byte of packet slot, length, marking ready for processing
-  movff   dcc_packet_rx_queue_insert, FSR0L
-  movff   dcc_packet_byte_count, INDF0
+  movlw   PACKET_RX_QUEUE_SLOT_LENGTH - 1
+  andwf   dcc_packet_rx_queue_insert, W
+  movwf   INDF0
 
   ; Advance insert offset to start of next slot, wrap round end of queue
   movlw   PACKET_RX_QUEUE_SLOT_LENGTH
-  addwf   dcc_packet_rx_queue_insert, F
+  addwf   FSR0
+  movff   FSR0, dcc_packet_rx_queue_insert
 
   movlw   DCC_PREAMBLE_COUNT - 1    ; End of packet marker counts as preamble
 
 dcc_packet_done
   movwf   dcc_preamble_downcounter  ; Set minimum length of preamble required
   bsf     DCC_SYNCHRONISE_FLAG
-  clrf    dcc_packet_byte_count
   clrf    dcc_byte_bit_downcounter
   clrf    dcc_rx_checksum
   bra     dcc_bit_done
@@ -387,11 +388,6 @@ store_next_dcc_byte
   movf    dcc_rx_shift_register, W
   xorwf   dcc_rx_checksum, F
   movwf   INDF0
-
-count_dcc_bytes
-  incfsz  dcc_packet_byte_count, W  ; Avoid roll over to zero
-  movwf   dcc_packet_byte_count
-  bra     dcc_bit_done
 
 dcc_bit_done
   bcf     INTCON, INT0IF    ; Re-enable INT0 interrupts
