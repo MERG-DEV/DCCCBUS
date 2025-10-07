@@ -19,7 +19,7 @@
 ;   bytes. This simplifies indexing arithmetic as the 8 bit indices   *
 ;   will rollover from 255 back to 0.                                 *
 ;                                                                     *
-;   During interrupts FSR0 accesses the received DCC packet queue.    *
+;   FSR0 is dedicated to accesses the received DCC packet queue.      *
 ;   Outside interrupts FSR1 accesses both the received DCC packet and *
 ;   CBUS event transmission queues.                                   *
 ;                                                                     *
@@ -174,7 +174,7 @@ EVENT_TX_QUEUE_SLOT_LENGTH  equ 16
   dcc_preamble_downcounter
   dcc_byte_bit_downcounter
   dcc_rx_checksum
-  dcc_rx_shift_register
+  dcc_rx_byte_count
 
   dcc_packet_rx_queue_insert
   dcc_packet_rx_queue_extract
@@ -338,20 +338,14 @@ end_of_dcc_packet
   tstfsz  dcc_rx_checksum   ; Skip if checksum verification passes
   bra     dcc_packet_bad
 
-  ; Reset insert offset to start of current slot
-  movlw   ~(PACKET_RX_QUEUE_SLOT_LENGTH - 1)
-  andwf   dcc_packet_rx_queue_insert, W
-  movwf   FSR0L
-
-  ; Set first byte of slot, packet length
+  ; Store packet length in last byte of slot
   movlw   PACKET_RX_QUEUE_SLOT_LENGTH - 1
-  andwf   dcc_packet_rx_queue_insert, W
-  movwf   INDF0
+  iorwf   FSR0L, F
+  movff   dcc_rx_byte_count, INDF0
 
   ; Advance insert offset to start of next slot, wrap round end of queue
   movlw   PACKET_RX_QUEUE_SLOT_LENGTH
-  addwf   FSR0
-  movff   FSR0, dcc_packet_rx_queue_insert
+  addwf   dcc_packet_rx_queue_insert, F
 
   movlw   DCC_PREAMBLE_COUNT - 1    ; End of packet marker counts as preamble
 
@@ -360,34 +354,30 @@ dcc_packet_done
   bsf     DCC_SYNCHRONISE_FLAG
   clrf    dcc_byte_bit_downcounter
   clrf    dcc_rx_checksum
+  clrf    dcc_rx_byte_count
+  movff   dcc_packet_rx_queue_insert, FSR0L
   bra     dcc_bit_done
 
 dcc_packet_bad
-  ; Reset insert offset to start of current slot
-  movlw   ~(PACKET_RX_QUEUE_SLOT_LENGTH - 1)
-  andwf   dcc_packet_rx_queue_insert, F
-
   movlw   DCC_PREAMBLE_COUNT
   bra     dcc_packet_done
 
 shift_dcc_bit_into_byte
-  rlcf    dcc_rx_shift_register, F
+  rlcf    INDF0, F
   decfsz  dcc_byte_bit_downcounter, F
-  bra     dcc_bit_done      ; Still receiving a byte
+  bra     dcc_bit_done      ; Still receiving byte
 
-end_of_dcc_byte
-  incf    dcc_packet_rx_queue_insert, W
-  andlw   PACKET_RX_QUEUE_SLOT_LENGTH - 1
+  movf    INDF0, W
+  xorwf   dcc_rx_checksum, F
+
+  incfsz  dcc_rx_byte_count, W
+  movwf   dcc_rx_byte_count
+
+  incf    FSR0L, F
+  movlw   PACKET_RX_QUEUE_SLOT_LENGTH - 1
+  andwf   FSR0L, W
   btfsc   STATUS, Z         ; Skip if not past end of slot
   bra     dcc_packet_bad
-
-store_next_dcc_byte
-  incf    dcc_packet_rx_queue_insert, F
-  movff   dcc_packet_rx_queue_insert, FSR0L
-
-  movf    dcc_rx_shift_register, W
-  xorwf   dcc_rx_checksum, F
-  movwf   INDF0
 
 dcc_bit_done
   bcf     INTCON, INT0IF    ; Re-enable INT0 interrupts
@@ -551,6 +541,7 @@ can_normal_wait
   movwf   dcc_preamble_downcounter
   clrf    dcc_byte_bit_downcounter
   clrf    dcc_rx_checksum
+  clrf    dcc_rx_byte_count
 
 slim_setup
   Set_FLiM_LED_Off
@@ -592,13 +583,15 @@ enqueue_cbus_event_for_tx
   return
 
   lfsr    FSR1, PACKET_RX_QUEUE_START
-  movff   dcc_packet_rx_queue_extract, FSR1L
+  movlw   PACKET_RX_QUEUE_SLOT_LENGTH - 1
+  iorwf   dcc_packet_rx_queue_extract, W
+  movwf   FSR1L
 
   movlw   DCC_PACKET_LENGTH
   cpfseq  INDF1             ; Skip if got expected byte count for packet
   bra     skip_dcc_packet
 
-  incf    FSR1L             ; FSR1 points to first byte of queued packet
+  movff   dcc_packet_rx_queue_extract, FSR1L
 
   movlw   DCC_ACC_BYTE1_MASK
   andwf   INDF1, W
