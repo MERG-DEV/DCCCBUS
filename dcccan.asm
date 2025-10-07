@@ -576,8 +576,7 @@ enqueue_cbus_event_for_tx
   btfsc   STATUS, Z         ; Skip if event Tx queue is not full
   return
 
-  movlw   ~(PACKET_RX_QUEUE_SLOT_LENGTH - 1)
-  andwf   dcc_packet_rx_queue_insert, W
+  movf    dcc_packet_rx_queue_insert, W
   xorwf   dcc_packet_rx_queue_extract, W
   btfsc   STATUS, Z         ; Skip if packet Rx queue is not empty
   return
@@ -704,11 +703,11 @@ transmit_next_cbus_event
   movff   POSTINC1, TXB1D6
   movff   INDF1, TXB1D7
 
-  bsf     TXB1CON, TXREQ
-
   ; Advance event extract offset to start of next slot, wrap round end of queue
   movlw   EVENT_TX_QUEUE_SLOT_LENGTH
   addwf   event_tx_queue_extract, F
+
+  bsf     TXB1CON, TXREQ
 
   return
 
