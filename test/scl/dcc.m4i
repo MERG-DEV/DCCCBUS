@@ -228,4 +228,19 @@ define(input_dcc_extnd_overrun_slot_acc,
        -- End of Packet
        input_dcc_one)
 
+define(input_dcc_extnd_too_short_acc,
+       -- Preamble
+       {input_dcc_bits(eval(14, 1))}
+       -- Byte One
+       input_dcc_zero
+       {input_dcc_bits(10000001)}
+       -- Byte Two
+       input_dcc_zero
+       {input_dcc_bits(01110001)}
+      -- Checksum
+       input_dcc_zero
+       {input_dcc_bits(checksum(10000001, 01110001))}
+       -- End of Packet
+       input_dcc_one)
+
 divert(0)dnl

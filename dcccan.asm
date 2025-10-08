@@ -353,11 +353,11 @@ not_dcc_preamble
   tstfsz  dcc_byte_bit_downcounter  ; Skip if not receiving a byte
   bra     shift_dcc_bit_into_byte
 
-end_of_dcc_packet
+  ; End of DCC packet
   tstfsz  dcc_rx_checksum   ; Skip if checksum verification passes
   bra     dcc_packet_bad
 
-  ; Store packet length in last byte of slot
+  ; Store DCC packet length in last byte of slot
   movlw   PACKET_RX_QUEUE_SLOT_LENGTH - 1
   iorwf   FSR0L, F
   movff   dcc_rx_byte_count, INDF0
@@ -386,6 +386,7 @@ shift_dcc_bit_into_byte
   decfsz  dcc_byte_bit_downcounter, F
   bra     dcc_bit_done      ; Still receiving byte
 
+  ; End of DCC byte
   movf    INDF0, W
   xorwf   dcc_rx_checksum, F
 
@@ -471,7 +472,10 @@ initialisation
   bsf     CANCON,REQOP2     ; Request CAN module configure mode
 
 can_config_wait
-  btfss   CANSTAT,OPMODE2   ; Skip if CAN module in configure mode ...
+  movf    CANSTAT, W
+  andlw   b'11100000'       ; Mask out all except operation mode bits
+  xorlw   b'10000000'       ; Test for configuration mode
+  tstfsz  WREG              ; Skip if in configuration mode ...
   bra     can_config_wait   ; ... else wait
 
   ; Set CAN bit rate and sample point
@@ -528,7 +532,7 @@ clear_rx_masks_loop
   clrf    CANCON            ; Request CAN module normal mode
 
 can_normal_wait
-  movf    CANSTAT,W
+  movf    CANSTAT, W
   andlw   b'11100000'       ; Mask out all except operation mode bits
   bnz     can_normal_wait   ; Loop if CAN module not in normal mode
 
@@ -610,14 +614,12 @@ decode_dcc_packet
   movlw   DCC_ACC_BYTE1_MASK
   andwf   POSTINC1, W       ; FSR1 points to second byte of queued packet
   xorlw   DCC_ACC_BYTE1_TEST
-  btfss   STATUS, Z         ; Skip if first byte verification passes
-  bra     skip_dcc_packet
+  bnz     skip_dcc_packet
 
   movlw   DCC_BASIC_ACC_BYTE2_MASK
   andwf   INDF1, W
   xorlw   DCC_BASIC_ACC_BYTE2_TEST
-  btfss   STATUS, Z         ; Skip if second byte verification passes
-  bra     not_dcc_basic_packet
+  bnz     not_dcc_basic_packet
 
   movlw   PACKET_RX_QUEUE_SLOT_LENGTH - 1
   iorwf   FSR1L, F
@@ -660,8 +662,7 @@ not_dcc_basic_packet
   movlw   DCC_EXTND_ACC_BYTE2_MASK
   andwf   INDF1, W
   xorlw   DCC_EXTND_ACC_BYTE2_TEST
-  btfss   STATUS, Z         ; Skip if second byte verification passes
-  bra     skip_dcc_packet
+  bnz     skip_dcc_packet
 
   movlw   PACKET_RX_QUEUE_SLOT_LENGTH - 1
   iorwf   FSR1L, F
@@ -725,7 +726,7 @@ translate_paired_output_address
   btfss   STATUS, C         ; Skip if no underflow on low byte ...
   decf    event_num_high, F ; ... else borrow from high byte
 
-  ; C and d
+  ; C and d -> Opcode
   ; C = 1, d = 0 => Activate first ouput, deactivate second output of pair ASOF
   ; C = 0, d = 0 => Deactivate first ouput, activate second output of pair ASON
   ; C = 1, d = 1 => Activate second ouput, deactivate first output of pair ASON
@@ -786,7 +787,7 @@ translate_single_output_address
   btfss   STATUS, C         ; Skip if no underflow on low byte ...
   decf    event_num_high, F ; ... else borrow from high byte
 
-  ; C
+  ; C -> Opcode
   movlw   OPC_ASOF
   btfsc   INDF1, 3
   movlw   OPC_ASON
