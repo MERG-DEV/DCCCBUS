@@ -222,4 +222,22 @@ define(input_dcc_extnd_acc_invalid_byte_2_c,
                              {0}cmp_event_to_acc(1, 3){1}event_to_acc(1, 9, 2){1},
                              10101010)})
 
+define(input_dcc_extnd_bad_checksum_acc,
+       -- Preamble
+       {input_dcc_bits(eval(14, 1))}
+       -- Byte One
+       input_dcc_zero
+       {input_dcc_bits(10000001)}
+       -- Byte Two
+       input_dcc_zero
+       {input_dcc_bits(01110001)}
+       -- Byte Three
+       input_dcc_zero
+       {input_dcc_bits(10010110)}
+      -- Checksum
+       input_dcc_zero
+       {input_dcc_bits(00000000)}
+       -- End of Packet
+       input_dcc_one)
+
 divert(0)dnl
