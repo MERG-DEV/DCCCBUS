@@ -101,9 +101,9 @@ beginning_of_test(891)
       tx_wait_for_node_message(OPC_ASOF, 0, 0, high_byte(4086), EN high,
                                                low_byte(4086), EN low)
       --
-      input_dcc_basic_acc(4086, Activate)
-      tx_wait_for_node_message(OPC_ASON, 0, 0, high_byte(4086), EN high,
-                                               low_byte(4086), EN low)
+      input_dcc_basic_acc(4087, Activate)
+      tx_wait_for_node_message(OPC_ASON, 0, 0, high_byte(4087), EN high,
+                                               low_byte(4087), EN low)
       --
       input_dcc_basic_acc(6, Activate)
       tx_wait_for_node_message(OPC_ASON, 0, 0, high_byte(6), EN high,

@@ -392,11 +392,10 @@ shift_dcc_bit_into_byte
   incfsz  dcc_rx_byte_count, W
   movwf   dcc_rx_byte_count
 
+  incf    FSR0L, W
+  andlw   PACKET_RX_QUEUE_SLOT_LENGTH - 1
+  btfss   STATUS, Z         ; Skip slot not full
   incf    FSR0L, F
-  movlw   PACKET_RX_QUEUE_SLOT_LENGTH - 1
-  andwf   FSR0L, W
-  btfsc   STATUS, Z         ; Skip if not past end of slot
-  bra     dcc_packet_bad
 
 dcc_bit_done
   bcf     INTCON, INT0IF    ; Re-enable INT0 interrupts
@@ -680,7 +679,7 @@ not_dcc_basic_packet
   movwf   event_opcode
   movff   PREINC1, event_extra_data
 
-  bra     skip_dcc_packet
+  bra     enqueue_cbus_event_for_tx
 
 
 ;**********************************************************************
