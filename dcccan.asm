@@ -19,9 +19,18 @@
 ;   bytes. This simplifies indexing arithmetic as the 8 bit indices   *
 ;   will rollover from 255 back to 0.                                 *
 ;                                                                     *
-;   FSR0 is dedicated to accesses the received DCC packet queue.      *
+;   FSR0 is dedicated to accesses the received DCC packet queue       *
+;   during interrupts.                                                *
 ;   Outside interrupts FSR1 accesses both the received DCC packet and *
 ;   CBUS event transmission queues.                                   *
+;                                                                     *
+;   In paired output mode accessory output are assumed to be          *
+;   complimentary pairs with pair, rather than outputs, mapping to a  *
+;   CBUS event number. Activating the first deactivates the second    *
+;   (=> ASOF), activating the second deactivates the first (=> ASON), *
+;   and vice versa.                                                   *
+;   In non paired output mode individual outputs map to a CBUS event  *
+;   number with deactivation giving ASOF and activation giving ASON.  *
 ;                                                                     *
 ;**********************************************************************
 ;                                                                     *
@@ -135,8 +144,11 @@ SLIM_LED_BIT   equ 7            ; Green LED
 #define  Set_SLiM_LED_On  bsf SLiM_LED
 #define  Set_SLiM_LED_Off bcf SLiM_LED
 
-#define  SETUP_INPUT PORTA, 5   ; Setup Switch
-#define  DCC_INPUT   PORTB,INT0
+#define  SETUP_INPUT        PORTA, 5   ; Setup Switch
+#define  PAIRED_MODE_INPUT  PORTA, 4
+#define  DCC_INPUT          PORTB,INT0
+
+#define  PAIRED_MODE_FLAG  mode_and_state, 6
 
 DCC_PREAMBLE_COUNT  equ 10
 DCC_BYTE_BIT_COUT   equ  8
@@ -144,9 +156,14 @@ DCC_BYTE_BIT_COUT   equ  8
 
 DCC_ACC_BYTE1_MASK        equ b'11000000'
 DCC_ACC_BYTE1_TEST        equ b'10000000'
+
 DCC_BASIC_ACC_BYTE2_MASK  equ b'10000000'
 DCC_BASIC_ACC_BYTE2_TEST  equ b'10000000'
-DCC_PACKET_LENGTH         equ 3
+DCC_BASIC_PACKET_LENGTH   equ 3
+
+DCC_EXTND_ACC_BYTE2_MASK  equ b'10001001'
+DCC_EXTND_ACC_BYTE2_TEST  equ b'00000001'
+DCC_EXTND_PACKET_LENGTH   equ 4
 
 PACKET_RX_QUEUE_START        equ 0x100
 PACKET_RX_QUEUE_SLOT_LENGTH  equ 4
@@ -169,7 +186,8 @@ EVENT_TX_QUEUE_SLOT_LENGTH  equ 8
   hpint_STATUS
   hpint_W
 
-  mode_and_state             ; bit 7 - Synchronising to end of preamble
+  mode_and_state            ; bit 7 - Synchronising to end of preamble
+                            ; bit 6 - Outputs as complimentary pairs
 
   dcc_preamble_downcounter
   dcc_byte_bit_downcounter
@@ -185,6 +203,7 @@ EVENT_TX_QUEUE_SLOT_LENGTH  equ 8
   event_opcode
   event_num_low
   event_num_high
+  event_extra_data
 
   ENDC
 #if (0xFF) < (event_num_high)
@@ -429,7 +448,8 @@ initialisation
   movwf   ADCON1
 
   clrf    LATA
-  movlw   b'00100000'       ; PortA bit 5 (RA5), setup pushbutton input
+  movlw   b'00110000'       ; PortA: bit 5 (RA5), setup pushbutton input
+                            ;        bit 4 (RA4), paired mode input
   movwf   TRISA
 
   clrf    LATB
@@ -543,6 +563,10 @@ can_normal_wait
   clrf    dcc_rx_checksum
   clrf    dcc_rx_byte_count
 
+  bsf     PAIRED_MODE_FLAG
+  btfss   PAIRED_MODE_INPUT
+  bcf     PAIRED_MODE_FLAG
+
 slim_setup
   Set_FLiM_LED_Off
   Set_SLiM_LED_On
@@ -561,14 +585,14 @@ slim_setup
 main_loop
   clrwdt
 
-  call    enqueue_cbus_event_for_tx
+  call    decode_dcc_packet
   call    transmit_next_cbus_event
 
   bra     main_loop
 
 
 ;**********************************************************************
-enqueue_cbus_event_for_tx
+decode_dcc_packet
 
   movlw   EVENT_TX_QUEUE_SLOT_LENGTH
   addwf   event_tx_queue_insert, W
@@ -582,23 +606,13 @@ enqueue_cbus_event_for_tx
   return
 
   lfsr    FSR1, PACKET_RX_QUEUE_START
-  movlw   PACKET_RX_QUEUE_SLOT_LENGTH - 1
-  iorwf   dcc_packet_rx_queue_extract, W
-  movwf   FSR1L
-
-  movlw   DCC_PACKET_LENGTH
-  cpfseq  INDF1             ; Skip if got expected byte count for packet
-  bra     skip_dcc_packet
-
   movff   dcc_packet_rx_queue_extract, FSR1L
 
   movlw   DCC_ACC_BYTE1_MASK
-  andwf   INDF1, W
+  andwf   POSTINC1, W       ; FSR1 points to second byte of queued packet
   xorlw   DCC_ACC_BYTE1_TEST
   btfss   STATUS, Z         ; Skip if first byte verification passes
   bra     skip_dcc_packet
-
-  incf    FSR1L             ; FSR1 points to second byte of queued packet
 
   movlw   DCC_BASIC_ACC_BYTE2_MASK
   andwf   INDF1, W
@@ -606,7 +620,50 @@ enqueue_cbus_event_for_tx
   btfss   STATUS, Z         ; Skip if second byte verification passes
   bra     skip_dcc_packet
 
-  ; Decode simple accessory decoder paired output addressing from RCN-213
+  movlw   PACKET_RX_QUEUE_SLOT_LENGTH - 1
+  iorwf   FSR1L, F
+
+  movlw   DCC_BASIC_PACKET_LENGTH
+  cpfseq  INDF1             ; Skip if got expected byte count for packet
+  bra     skip_dcc_packet
+
+  movff   dcc_packet_rx_queue_extract, FSR1L
+  incf    FSR1L, F          ; FSR1 points to second byte of queued packet
+
+  btfsc   PAIRED_MODE_FLAG
+  call    translate_paired_output_address
+  btfss   PAIRED_MODE_FLAG
+  call    translate_single_output_address
+
+enqueue_cbus_event_for_tx
+  lfsr    FSR1, EVENT_TX_QUEUE_START
+  movff   event_tx_queue_insert, FSR1L
+
+  movff   event_opcode, POSTINC1
+  clrf    POSTINC1          ; Node number high
+  clrf    POSTINC1          ; Node number low
+  movff   event_num_high, POSTINC1
+  movff   event_num_low, POSTINC1
+  movff   event_extra_data, INDF1
+
+  ; Advance event insert offset to start of next slot, wrap round end of queue
+  movlw   EVENT_TX_QUEUE_SLOT_LENGTH
+  addwf   event_tx_queue_insert, F
+
+skip_dcc_packet
+  ; Advance packet extract offset to start of next slot, wrap round end of queue
+  movlw   PACKET_RX_QUEUE_SLOT_LENGTH
+  addwf   dcc_packet_rx_queue_extract, F
+
+  return
+
+
+;**********************************************************************
+; On entry and exit FSR1 addresses second byte of queued packet
+;
+translate_paired_output_address
+
+  ; From RCN-213, simple accessory decoder output addressing
   ;
   ; 10AAAAAA 1aaaCDDd
   ;   ||||||  +++||||  DCC address bits 8 to 6 (Acc 10 - 8), one's complemented
@@ -620,22 +677,29 @@ enqueue_cbus_event_for_tx
   ; Output address    (12 bits)   = aaaA AAAA ADDd
   ; Event nummber, toggling pairs = Accessory address - b'0100' (4)
 
-  ; aaa
+  ; 0000 0aaa -> Event number high
   swapf   POSTDEC1, W       ; FSR1 points to first byte of queued packet
   andlw   b'00000111'
   xorlw   b'00000111'
   movwf   event_num_high
 
-  ; AA AAAA
+  ; AAAA AAxx -> Event number low
   rlncf   INDF1, F
   rlncf   POSTINC1, W       ; FSR1 points to second byte of queued packet
   andlw   b'11111100'
   movwf   event_num_low
 
-  ; DD
+  ; xxxx xxDD -> Event number low
   rrncf   INDF1, W
   andlw   b'00000011'
   iorwf   event_num_low, F
+
+  ; Event number now 0000 0aaa AAAA AADD (accessory address)
+  ; DCC addresses start at 1, map this to event number 0 by subtracting 4
+  movlw   4
+  subwf   event_num_low, F
+  btfss   STATUS, C         ; Skip if no underflow on low byte ...
+  decf    event_num_high, F ; ... else borrow from high byte
 
   ; C and d
   ; C = 1, d = 0 => Activate first ouput, deactivate second output of pair ASOF
@@ -649,33 +713,63 @@ enqueue_cbus_event_for_tx
   movlw   OPC_ASON          ; Activate second output, deactivate first output
   movwf   event_opcode
 
-  ; Event number now 0000 0aaa AAAA AADD (accessory address)
-  ; DCC addresses start at 1, map this to event number 0 by subtracting 4
-  movlw   4
+  return
+
+
+;**********************************************************************
+; On entry and exit FSR1 addresses second byte of queued packet
+;
+translate_single_output_address
+
+  ; From RCN-213, simple accessory decoder output addressing
+  ;
+  ; 10AAAAAA 1aaaCDDd
+  ;   ||||||  +++||||  DCC address bits 8 to 6 (Acc 10 - 8), one's complemented
+  ;   ++++++     ||||  DCC address bits 5 to 0 (Acc 7 - 2)
+  ;              |++|  Accessory output pair index (Acc 1 - 0), range 0 to 3
+  ;              |  +  Accessory indexed pair output, range 0 to 1
+  ;              +---  0 deactivate, 1 activate
+  ;
+  ; DCC base address   (9 bits)   = 000a aaAA AAAA
+  ; Accessory address (11 bits)   = 0aaa AAAA AADD
+  ; Output address    (12 bits)   = aaaA AAAA ADDd
+  ; Event nummber, toggling pairs = Output address - b'1000' (8)
+
+  ; 0000 aaaA -> Event number high
+  swapf   POSTDEC1, W       ; FSR1 points to first byte of queued packet
+  andlw   b'00000111'
+  xorlw   b'00000111'
+  rlncf   WREG
+  btfsc   INDF1, 5
+  bsf     WREG, 0
+  movwf   event_num_high
+
+  ; AAAA Axxx -> Event number low
+  swapf   INDF1, F
+  rrncf   POSTINC1, W       ; FSR1 points to second byte of queued packet
+  andlw   b'11111000'
+  movwf   event_num_low
+
+  ; xxxx xDDd -> Event number low
+  movf    INDF1, W
+  andlw   b'00000111'
+  iorwf   event_num_low, F
+
+  ; Event number now 0000 aaaA AAAA ADDd (output address)
+  ; DCC addresses start at 1, map this to event number 0 by subtracting 8
+  movlw   8
   subwf   event_num_low, F
   btfss   STATUS, C         ; Skip if no underflow on low byte ...
   decf    event_num_high, F ; ... else borrow from high byte
 
-  ; Enqueue event
-  lfsr    FSR1, EVENT_TX_QUEUE_START
-  movff   event_tx_queue_insert, FSR1L
-
-  movff   event_opcode, POSTINC1
-  clrf    POSTINC1          ; Node number high
-  clrf    POSTINC1          ; Node number low
-  movff   event_num_high, POSTINC1
-  movff   event_num_low, INDF1
-
-  ; Advance event insert offset to start of next slot, wrap round end of queue
-  movlw   EVENT_TX_QUEUE_SLOT_LENGTH
-  addwf   event_tx_queue_insert, F
-
-skip_dcc_packet
-  ; Advance packet extract offset to start of next slot, wrap round end of queue
-  movlw   PACKET_RX_QUEUE_SLOT_LENGTH
-  addwf   dcc_packet_rx_queue_extract, F
+  ; C
+  movlw   OPC_ASOF
+  btfsc   INDF1, 3
+  movlw   OPC_ASON
+  movwf   event_opcode
 
   return
+
 
 ;**********************************************************************
 transmit_next_cbus_event

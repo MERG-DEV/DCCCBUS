@@ -181,14 +181,14 @@ define(input_dcc_basic_invalid_byte_1_c_acc,
                              checksum({11}event_to_acc(1, 3, 6),
                                       basic_acc_byte_2(1, Activate)))})
 
-define(input_dcc_basic_acc_pair_invalid_byte_2_activate,
+define(input_dcc_basic_acc_invalid_byte_2_activate,
        {_input_dcc_basic_acc(eval(14, 1),
                              acc_byte_1(1),
                              {0}cmp_event_to_acc(1, 3){1}event_to_acc(1, 9, 3),
                              checksum(acc_byte_1(1),
                                       {0}cmp_event_to_acc(1, 3){1}event_to_acc(1, 9, 3)))})
 
-define(input_dcc_basic_acc_pair_invalid_byte_2_deactivate,
+define(input_dcc_basic_acc_invalid_byte_2_deactivate,
        {_input_dcc_basic_acc(eval(14, 1),
                              acc_byte_1(1),
                              {0}cmp_event_to_acc(1, 3){0}event_to_acc(1, 9, 3),

@@ -53,12 +53,16 @@ define(configure_can,
        CANSTAT.OPMODE2 <= '0';
        log(CAN configured))
 
-define(setup_button, RA2)
+define(setup_button, RA5)
 define(set_setup_off, setup_button <= '1';)
 define(set_setup_on, setup_button <= '0';)
 
 define(dcc_input, INT0)
 define(set_dcc_off, dcc_input <= '0';)
 define(set_dcc_on, dcc_input <= '1';)
+
+define(paired_outputs_button, RA4)
+define(set_paired_outputs_off, paired_outputs_button <= '0';)
+define(set_paired_outputs_on, paired_outputs_button <= '1';)
 
 divert(0)dnl

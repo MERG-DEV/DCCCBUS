@@ -3,6 +3,8 @@ set_test_name()
 beginning_of_test(99)
     begin_test
       --
+      set_paired_outputs_on
+      --
       configure_can
       --
       wait_until_slim -- Booted into SLiM
