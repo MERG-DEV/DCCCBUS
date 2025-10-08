@@ -144,8 +144,8 @@ DCC_BYTE_BIT_COUT   equ  8
 
 DCC_ACC_BYTE1_MASK        equ b'11000000'
 DCC_ACC_BYTE1_TEST        equ b'10000000'
-DCC_BASIC_ACC_BYTE2_MASK  equ b'10001000'
-DCC_BASIC_ACC_BYTE2_TEST  equ b'10001000'
+DCC_BASIC_ACC_BYTE2_MASK  equ b'10000000'
+DCC_BASIC_ACC_BYTE2_TEST  equ b'10000000'
 DCC_PACKET_LENGTH         equ 3
 
 PACKET_RX_QUEUE_START        equ 0x100
@@ -606,19 +606,19 @@ enqueue_cbus_event_for_tx
   btfss   STATUS, Z         ; Skip if second byte verification passes
   bra     skip_dcc_packet
 
-  ; Decode simple accessory decoder output address from RCN-213
+  ; Decode simple accessory decoder paired output addressing from RCN-213
   ;
   ; 10AAAAAA 1aaaCDDd
-  ;   ||||||  +++ |||  DCC address bits 8 to 6 (Acc 10 - 8), one's complemented
-  ;   ++++++      |||  DCC address bits 5 to 0 (Acc 7 - 2)
-  ;               ++|  Accessory output pair index (Acc 1 - 0), range 0 to 3
-  ;                 +  Accessory indexed pair output, range 0 to 1
+  ;   ||||||  +++||||  DCC address bits 8 to 6 (Acc 10 - 8), one's complemented
+  ;   ++++++     ||||  DCC address bits 5 to 0 (Acc 7 - 2)
+  ;              |++|  Accessory output pair index (Acc 1 - 0), range 0 to 3
+  ;              |  +  Accessory indexed pair output, range 0 to 1
+  ;              +---  0 deactivate, 1 activate
   ;
   ; DCC base address   (9 bits)   = 000a aaAA AAAA
   ; Accessory address (11 bits)   = 0aaa AAAA AADD
   ; Output address    (12 bits)   = aaaA AAAA ADDd
   ; Event nummber, toggling pairs = Accessory address - b'0100' (4)
-  ; For toggling pairs output bit, d, not activation bit, C selects On or Off
 
   ; aaa
   swapf   POSTDEC1, W       ; FSR1 points to first byte of queued packet
@@ -637,10 +637,16 @@ enqueue_cbus_event_for_tx
   andlw   b'00000011'
   iorwf   event_num_low, F
 
-  ; d
-  movlw   OPC_ASOF
-  btfsc   INDF1, 0          ; d = 0, activate first output of a pair = ASOF
-  movlw   OPC_ASON          ; d = 1, activate second output of a pair = ASON
+  ; C and d
+  ; C = 1, d = 0 => Activate first ouput, deactivate second output of pair ASOF
+  ; C = 0, d = 0 => Deactivate first ouput, activate second output of pair ASON
+  ; C = 1, d = 1 => Activate second ouput, deactivate first output of pair ASON
+  ; C = 0, d = 0 => Deactivate second ouput, activate first output of pair ASOF
+  btfsc   INDF1, 0          ; d = 0, operate on first output of a pair
+  btg     INDF1, 3          ; d = 1, operate on second output of a pair
+  movlw   OPC_ASOF          ; Activate first output, deactivate second output
+  btfss   INDF1, 3
+  movlw   OPC_ASON          ; Activate second output, deactivate first output
   movwf   event_opcode
 
   ; Event number now 0000 0aaa AAAA AADD (accessory address)

@@ -1,6 +1,6 @@
 set_test_name()
 
-beginning_of_test(2379)
+beginning_of_test(2332)
     begin_test
       --
       configure_can
@@ -32,20 +32,12 @@ beginning_of_test(2379)
       input_dcc_basic_acc_pair(11, Activate)
       log(1 in transmitter 11 in Event Tx queue 0 in DCC packet queue)
       --
-      log(DCC packet 201 Deactivate not queued as event for Tx)
-      input_dcc_basic_acc(201, Deactivate)
-      log(1 in transmitter 11 in Event Tx queue 0 in DCC packet queue)
-      --
       log(Queue 24 individual Activation translated as pair 12 Deactivation)
       input_dcc_basic_acc(24, Activate)
       log(1 in transmitter 12 in Event Tx queue 0 in DCC packet queue)
       --
-      log(DCC packet 202 Deactivate not queued as event for Tx)
-      input_dcc_basic_acc(202, Deactivate)
-      log(1 in transmitter 12 in Event Tx queue 0 in DCC packet queue)
-      --
-      log(Queue 26 individual Activation translated as pair 13 Deactivation)
-      input_dcc_basic_acc(26, Activate)
+      log(Queue 26 individual Deactivation translated as pair 13 Activation)
+      input_dcc_basic_acc(26, Deactivate)
       log(1 in transmitter 13 in Event Tx queue 0 in DCC packet queue)
       --
       input_dcc_basic_acc_pair(14, Deactivate)
@@ -247,8 +239,8 @@ beginning_of_test(2379)
       tx_wait_for_node_message(OPC_ASOF, 0, 0, 0, EN high,  12, EN low)
       log(1 in transmitter 31 in Event Tx queue 50 in DCC packet queue)
       --
-      log(Tx 26 individual Activation translated as pair 13 Deactivation)
-      tx_wait_for_node_message(OPC_ASOF, 0, 0, 0, EN high,  13, EN low)
+      log(Tx 26 individual Deactivation translated as pair 13 Activation)
+      tx_wait_for_node_message(OPC_ASON, 0, 0, 0, EN high,  13, EN low)
       log(1 in transmitter 31 in Event Tx queue 49 in DCC packet queue)
       --
       tx_wait_for_node_message(OPC_ASOF, 0, 0, 0, EN high,  14, EN low)

@@ -1,6 +1,6 @@
 set_test_name()
 
-beginning_of_test(895)
+beginning_of_test(893)
     begin_test
       --
       configure_can
@@ -51,16 +51,22 @@ beginning_of_test(895)
       tx_wait_for_node_message(OPC_ASON, 0, 0, high_byte(508), EN high,
                                                low_byte(508), EN low)
       --
+      log(Individual 510 Deactivation translated as pair 255 Activation)
       input_dcc_basic_acc(510, Deactivate)
-      tx_check_for_no_message(1, DCC event)
+      tx_wait_for_node_message(OPC_ASON, 0, 0, high_byte(255), EN high,
+                                               low_byte(255), EN low)
       --
+      log(Individual 510 Activation translated as pair 255 Deactivation)
       input_dcc_basic_acc(510, Activate)
       tx_wait_for_node_message(OPC_ASOF, 0, 0, high_byte(255), EN high,
                                                low_byte(255), EN low)
       --
+      log(Individual 511 Deactivation translated as pair 255 Activation)
       input_dcc_basic_acc(511, Deactivate)
-      tx_check_for_no_message(1, DCC event)
+      tx_wait_for_node_message(OPC_ASOF, 0, 0, high_byte(255), EN high,
+                                               low_byte(255), EN low)
       --
+      log(Individual 511 Activation translated as pair 255 Deactivation)
       input_dcc_basic_acc(511, Activate)
       tx_wait_for_node_message(OPC_ASON, 0, 0, high_byte(255), EN high,
                                                low_byte(255), EN low)
