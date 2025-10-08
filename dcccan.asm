@@ -618,7 +618,7 @@ decode_dcc_packet
   andwf   INDF1, W
   xorlw   DCC_BASIC_ACC_BYTE2_TEST
   btfss   STATUS, Z         ; Skip if second byte verification passes
-  bra     skip_dcc_packet
+  bra     not_dcc_basic_packet
 
   movlw   PACKET_RX_QUEUE_SLOT_LENGTH - 1
   iorwf   FSR1L, F
@@ -656,6 +656,31 @@ skip_dcc_packet
   addwf   dcc_packet_rx_queue_extract, F
 
   return
+
+not_dcc_basic_packet
+  movlw   DCC_EXTND_ACC_BYTE2_MASK
+  andwf   INDF1, W
+  xorlw   DCC_EXTND_ACC_BYTE2_TEST
+  btfss   STATUS, Z         ; Skip if second byte verification passes
+  bra     skip_dcc_packet
+
+  movlw   PACKET_RX_QUEUE_SLOT_LENGTH - 1
+  iorwf   FSR1L, F
+
+  movlw   DCC_EXTND_PACKET_LENGTH
+  cpfseq  INDF1             ; Skip if got expected byte count for packet
+  bra     skip_dcc_packet
+
+  movff   dcc_packet_rx_queue_extract, FSR1L
+  incf    FSR1L, F          ; FSR1 points to second byte of queued packet
+
+  call    translate_paired_output_address
+
+  movlw   OPC_ASON1
+  movwf   event_opcode
+  movff   PREINC1, event_extra_data
+
+  bra     skip_dcc_packet
 
 
 ;**********************************************************************
