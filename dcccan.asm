@@ -172,15 +172,15 @@ EVENT_TX_QUEUE_START        equ 0x200
 EVENT_TX_QUEUE_SLOT_LENGTH  equ 8
 
 
-  nolist
+  ;nolist
   include   "cbuslib/boot_loader.inc"
-  list
+  ;list
 
 
 ;**********************************************************************
 ; Variable definitions
 
-  CBLOCK  ; Follow on from boot loader RAM, which starts at 0
+  CBLOCK  0 ; Overlayed with boot loader RAM, which starts at 0
 
   ; Store for register values during high priority interrput
   hpint_STATUS
@@ -206,7 +206,7 @@ EVENT_TX_QUEUE_SLOT_LENGTH  equ 8
   event_extra_data
 
   ENDC
-#if (0xFF) < (event_num_high)
+#if (0xFF) < (event_extra_data)
     error "RAM allocation beyond end of Bank 0"
 #endif
 
@@ -217,6 +217,15 @@ EVENT_TX_QUEUE_SLOT_LENGTH  equ 8
 
 ;**********************************************************************
 ; Start of program code
+
+  org  RESET_VECT
+  goto    initialisation
+
+  org  HIGH_INT_VECT
+  goto    high_priority_interrupt
+
+  org  LOW_INT_VECT
+  goto    low_priority_interrupt
 
   org  NODE_TYPE_PARAMETER     ; Node type parameter
 
