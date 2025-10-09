@@ -15,7 +15,7 @@
 ;                                                                     *
 ;   Received DCC packets and outgoing CBUS events are buffered in     *
 ;   cyclic queues each occupying a dedicated RAM banks.               *
-;   Both queues have 16 slots each of 16 bytes to give a total of 256 *
+;   Both queues have 64 slots each of 4 bytes to give a total of 256  *
 ;   bytes. This simplifies indexing arithmetic as the 8 bit indices   *
 ;   will rollover from 255 back to 0.                                 *
 ;                                                                     *
@@ -31,11 +31,6 @@
 ;   and vice versa.                                                   *
 ;   In non paired output mode individual outputs map to a CBUS event  *
 ;   number with deactivation giving ASOF and activation giving ASON.  *
-;                                                                     *
-;**********************************************************************
-;                                                                     *
-;    5 Jun 2025 - Chris White:                                        *
-;       Created new MPLABX project with empty source file.            *
 ;                                                                     *
 ;**********************************************************************
 ;                                                                     *
@@ -169,7 +164,7 @@ PACKET_RX_QUEUE_START        equ 0x100
 PACKET_RX_QUEUE_SLOT_LENGTH  equ 4
 
 EVENT_TX_QUEUE_START        equ 0x200
-EVENT_TX_QUEUE_SLOT_LENGTH  equ 8
+EVENT_TX_QUEUE_SLOT_LENGTH  equ 4
 
 
   ;nolist
@@ -650,8 +645,6 @@ enqueue_cbus_event_for_tx
   movff   event_tx_queue_insert, FSR1L
 
   movff   event_opcode, POSTINC1
-  clrf    POSTINC1          ; Node number high
-  clrf    POSTINC1          ; Node number low
   movff   event_num_high, POSTINC1
   movff   event_num_low, POSTINC1
   movff   event_extra_data, INDF1
@@ -829,13 +822,13 @@ transmit_next_cbus_event
   movwf   TXB1DLC
 
   movff   POSTINC1, TXB1D0  ; Opcode
-  movff   POSTINC1, TXB1D1
-  movff   POSTINC1, TXB1D2
-  movff   POSTINC1, TXB1D3
-  movff   POSTINC1, TXB1D4
-  movff   POSTINC1, TXB1D5
-  movff   POSTINC1, TXB1D6
-  movff   INDF1, TXB1D7
+  clrf    TXB1D1            ; NN High
+  clrf    TXB1D2            ; NN Low
+  movff   POSTINC1, TXB1D3  ; EN High
+  movff   POSTINC1, TXB1D4  ; EN Low
+  movff   POSTINC1, TXB1D5  ; Additional data
+  clrf    TXB1D6
+  clrf    TXB1D7
 
   ; Advance event extract offset to start of next slot, wrap round end of queue
   movlw   EVENT_TX_QUEUE_SLOT_LENGTH
