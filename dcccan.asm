@@ -139,6 +139,13 @@ SLIM_LED_BIT   equ 7            ; Green LED
 #define  Set_SLiM_LED_On  bsf SLiM_LED
 #define  Set_SLiM_LED_Off bcf SLiM_LED
 
+CAN_LOST_ARBITRATION_LIMIT  equ 10
+CAN_RAISE_SIDH_PRIORITY     equ b'11000000'
+
+CAN_SIDH  equ b'10111111'
+CAN_SIDL  equ b'11100000'
+
+
 #define  SETUP_INPUT        PORTA, 5   ; Setup Switch
 #define  PAIRED_MODE_INPUT  PORTA, 4
 #define  DCC_INPUT          PORTB,INT0
@@ -178,6 +185,7 @@ EVENT_TX_QUEUE_SLOT_LENGTH  equ 4
   CBLOCK  0 ; Overlayed with boot loader RAM, which starts at 0
 
   ; Store for register values during high priority interrput
+  hpint_BSR
   hpint_STATUS
   hpint_W
 
@@ -199,6 +207,8 @@ EVENT_TX_QUEUE_SLOT_LENGTH  equ 4
   event_num_low
   event_num_high
   event_extra_data
+
+  tx_lost_arbitration_count
 
   ENDC
 #if (0xFF) < (event_extra_data)
@@ -275,11 +285,14 @@ parameter_checksum
 high_priority_interrupt
 
   ; Protect register values during interrupt
+  movff   BSR, hpint_BSR
   movff   STATUS, hpint_STATUS
   movwf   hpint_W
 
   btfss   INTCON, INT0IF
-  bra     exit_high_priority_interrupt
+  bra     not_dcc_interrupt
+
+  bcf     INTCON, INT0IF    ; Re-enable INT0 interrupts
 
   ; DCC input has changed
   btfss   DCC_INPUT
@@ -403,12 +416,50 @@ shift_dcc_bit_into_byte
   incf    FSR0L, F
 
 dcc_bit_done
-  bcf     INTCON, INT0IF    ; Re-enable INT0 interrupts
+not_dcc_interrupt
+  btfss   PIR3, ERRIF
+  bra     not_can_error_interrupt
 
+  bcf     PIR3, ERRIF
+
+  banksel TXB1CON
+  btfss   TXB1CON, TXLARB
+  bra     tx_error_done
+
+  incfsz  tx_lost_arbitration_count, W
+  movwf   tx_lost_arbitration_count
+
+  ; Bits 7 and 6 of SIDH used for Tx message priority,
+  ;   10 = Normal, 01 = High, 00 = Top
+  btfss   TXB1SIDH, 7               ; Skip if priority is normal ...
+  bra     tx_at_raised_priority     ; ... else already at high or top priority
+
+  movlw   CAN_LOST_ARBITRATION_LIMIT
+  cpfsgt  tx_lost_arbitration_count ; Skip if need to raise priority
+  bra     tx_error_done
+  bra     tx_raise_priority
+
+tx_at_raised_priority
+  btfss   TXB1SIDH, 6               ; Skip if priority is high ...
+  bra     tx_error_done             ; ... else already at top priority
+
+  movlw   CAN_LOST_ARBITRATION_LIMIT * 2
+  cpfsgt  tx_lost_arbitration_count ; Skip if need to raise priority
+  bra     tx_error_done
+
+tx_raise_priority
+  movlw   CAN_RAISE_SIDH_PRIORITY
+  addwf   TXB1SIDH, F
+
+tx_error_done
+  bsf     TXB1CON, TXREQ    ; Clear CAN Tx error flags
+
+not_can_error_interrupt
 exit_high_priority_interrupt
   ; Restore register values protected during interrupt
   movf    hpint_W, W
   movff   hpint_STATUS, STATUS
+  movff   hpint_BSR, BSR
   retfie
 
 
@@ -432,12 +483,16 @@ clear_ram_loop
 ;**********************************************************************
 initialisation
 
-  clrf    INTCON            ; Disable interrupts
+  clrf    INTCON            ; Ensure interrupts are disabled
 
   bsf     RCON, IPEN        ; Enable interrupt priority levels
+  bsf     INTCON, INT0IE    ; Enable INT0 external interrupt
   clrf    INTCON3
   clrf    INTCON2           ; Pullups enabled on PORTB inputs
                             ; INT0 interrupt on falling edge
+  bsf     IPR3, ERRIP       ; CAN error interrupts are high priority
+  bsf     PIE3, ERRIE       ; Enable CAN error interrupts
+  bsf     IPR3, ERRIP       ; CAN error interrupts are high priority
 
   lfsr    FSR0, 0x000       ; Clear data memory bank 0
   call    clear_ram_loop
@@ -528,11 +583,6 @@ clear_rx_masks_loop
   cpfseq  FSR0L
   bra     clear_rx_masks_loop
 
-  movlw b'10111111'
-  movwf TXB1SIDH
-  movlw b'11100000'
-  movwf TXB1SIDL
-
   clrf    CANCON            ; Request CAN module normal mode
 
 can_normal_wait
@@ -578,12 +628,7 @@ slim_setup
   Set_FLiM_LED_Off
   Set_SLiM_LED_On
 
-  movlw   b'10010000'       ; Enable high priority interrupts
-                            ; Disable low priority peripheral interrupts
-                            ; Disable TMR0 overflow interrupt
-                            ; Enable INT0 external interrupt
-                            ; Disable Port B change interrupt
-  movwf   INTCON
+  bsf     INTCON, GIEH      ; Enable high priority interrupts
 
   ; Drop through to main_loop
 
@@ -801,6 +846,7 @@ translate_single_output_address
 ;**********************************************************************
 transmit_next_cbus_event
 
+  banksel TXB1CON
   btfsc   TXB1CON, TXREQ
   return
 
@@ -811,8 +857,6 @@ transmit_next_cbus_event
 
   lfsr    FSR1, EVENT_TX_QUEUE_START
   movff   event_tx_queue_extract, FSR1L
-
-  banksel TXB1D0
 
   ; Number of bytes for transmission derived from opcode
   swapf   INDF1, W
@@ -830,10 +874,16 @@ transmit_next_cbus_event
   clrf    TXB1D6
   clrf    TXB1D7
 
+  movlw   CAN_SIDH
+  movwf   TXB1SIDH
+  movlw   CAN_SIDL
+  movwf   TXB1SIDL
+
   ; Advance event extract offset to start of next slot, wrap round end of queue
   movlw   EVENT_TX_QUEUE_SLOT_LENGTH
   addwf   event_tx_queue_extract, F
 
+  clrf    tx_lost_arbitration_count
   bsf     TXB1CON, TXREQ
 
   return

@@ -111,6 +111,20 @@ define(tx_wait_for_cmderr_message,
                             $1, Node Number (high), $2, Node Number (low),
                             $3, error number)})
 
+define(tx_arbitration_lost_interrupt,
+       TXB1CON.TXLARB <= '1';
+       CANSTAT <= 16#02#;
+       PIR3.ERRIF <= '1';
+       wait_for_high_priority_interrupt
+       TXB1CON.TXLARB <= '0';)
+
+define(tx_transmission_error_interrupt,
+       TXB1CON.TXERR <= '1';
+       CANSTAT <= 16#02#;
+       PIR3.ERRIF <= '1';
+       wait_for_high_priority_interrupt
+       TXB1CON.TXERR <= '0';)
+
 define(tx_rtr,
        tx_wait_if_not_ready
        TXB1CON.TXREQ <= '0';
@@ -130,8 +144,10 @@ define(tx_check_can_id,
          log(Incorrect $1 CAN Id SIDL)
          test_state := fail;
        end if;
-       if test_state != fail then
-         log(Correct $1 CAN Id)
+       if TXB1SIDH == $2 then
+         if TXB1SIDL == $3 then
+           log(Correct $1 CAN Id)
+         end if;
        end if;)
 
 define(tx_can_id,
@@ -149,7 +165,7 @@ define(rx_wait_if_not_ready,
 define(rx_frame,
        RXB0CON.RXFUL <= '1';
        RXB0DLC <= 16#0$1#;
-       COMSTAT <= 16#80#;
+       COMSTAT.FIFOEMPTY <= '1';
        CANSTAT <= 16#0C#;
        PIR3.RXB0IF <= '1';
        rx_wait_if_not_ready
@@ -248,5 +264,16 @@ define(rxb1_data,
        {rx_load_data(RXB1D6, $7)}
        {rx_load_data(RXB1D7, $8)}
        {rxb1_frame($#)})
+
+define(configure_can,
+       if CANCON.REQOP2 != '1' then
+         log(Waiting to configure CAN)
+         wait until CANCON.REQOP2 == '1';
+       end if;
+       CANSTAT.OPMODE2 <= '1';
+       log(Configuring CAN)
+       wait until CANCON.REQOP2 == '0';
+       CANSTAT.OPMODE2 <= '0';
+       log(CAN configured))
 
 divert(0)dnl
