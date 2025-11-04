@@ -767,11 +767,6 @@ translate_paired_output_address
   iorwf   event_num_low, F
 
   ; Event number now 0000 0aaa AAAA AADD (accessory address)
-  ; DCC addresses start at 1, map this to event number 0 by subtracting 4
-  movlw   4
-  subwf   event_num_low, F
-  btfss   STATUS, C         ; Skip if no underflow on low byte ...
-  decf    event_num_high, F ; ... else borrow from high byte
 
   ; C and d -> Opcode
   ; C = 1, d = 0 => Activate first ouput, deactivate second output of pair ASOF
@@ -828,11 +823,6 @@ translate_single_output_address
   iorwf   event_num_low, F
 
   ; Event number now 0000 aaaA AAAA ADDd (output address)
-  ; DCC addresses start at 1, map this to event number 0 by subtracting 8
-  movlw   8
-  subwf   event_num_low, F
-  btfss   STATUS, C         ; Skip if no underflow on low byte ...
-  decf    event_num_high, F ; ... else borrow from high byte
 
   ; C -> Opcode
   movlw   OPC_ASOF

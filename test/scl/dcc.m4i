@@ -23,7 +23,7 @@ define(input_dcc_bits,
        {ifelse($1, {}, {}, input_dcc_bit(substr($1, 0, 1))
                            {input_dcc_bits(substr($1, 1))})})
 
-define(event_to_acc, {substr(eval($1 + 8, 2, 12), $2, $3)})
+define(event_to_acc, {substr(eval($1, 2, 12), $2, $3)})
 
 define(cmp_event_to_acc,
        {eval({0b}eval($2, 1) - {0b}event_to_acc($1, 0, $2), 2, $2)})
