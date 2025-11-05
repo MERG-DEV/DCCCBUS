@@ -4,6 +4,7 @@ beginning_of_test(99)
     begin_test
       --
       set_paired_outputs_on
+      set_rcn213_linear_addressing_off
       --
       configure_can
       --

@@ -24,7 +24,7 @@
 ;   Outside interrupts FSR1 accesses both the received DCC packet and *
 ;   CBUS event transmission queues.                                   *
 ;                                                                     *
-;   In paired output mode accessory output are assumed to be          *
+;   In paired output mode accessory outputs are assumed to be         *
 ;   complimentary pairs with pair, rather than outputs, mapping to a  *
 ;   CBUS event number. Activating the first deactivates the second    *
 ;   (=> ASOF), activating the second deactivates the first (=> ASON), *
@@ -45,8 +45,8 @@
 ;                    0V -> VSS| 8     21|RB0(INT0) <- DCC             *
 ;                    Resonator| 9     20|VDD <- +5V                   *
 ;                    Resonator|10     19|VSS <- 0V                    *
-;                          RC0|11     18|RC7                          *
-;                          RC1|12     17|RC6                          *
+;                          RC0|11     18|RC7 <- Paired outputs        *
+;                          RC1|12     17|RC6 <- RCN-213 linear address*
 ;                          RC2|13     16|RC5                          *
 ;                          RC3|14     15|RC4                          *
 ;                             +---------+                             *
@@ -146,11 +146,13 @@ CAN_SIDH  equ b'10111111'
 CAN_SIDL  equ b'11100000'
 
 
-#define  SETUP_INPUT        PORTA, 5   ; Setup Switch
-#define  PAIRED_MODE_INPUT  PORTA, 4
-#define  DCC_INPUT          PORTB,INT0
+#define  SETUP_INPUT                     PORTA, 5   ; Setup Switch
+#define  PAIRED_MODE_INPUT               PORTC, 7
+#define  RCN213_LINEAR_ADDRESSING_INPUT  PORTC, 6
+#define  DCC_INPUT                       PORTB,INT0
 
-#define  PAIRED_MODE_FLAG  mode_and_state, 6
+#define  PAIRED_MODE_FLAG               mode_and_state, 6
+#define  RCN213_LINEAR_ADDRESSING_FLAG  mode_and_state, 7
 
 DCC_PREAMBLE_COUNT  equ 10
 DCC_BYTE_BIT_COUT   equ  8
@@ -191,6 +193,7 @@ EVENT_TX_QUEUE_SLOT_LENGTH  equ 4
 
   mode_and_state            ; bit 7 - Synchronising to end of preamble
                             ; bit 6 - Outputs as complimentary pairs
+                            ; bit 5 - Use RCN-213 linear accessory addressing
 
   dcc_preamble_downcounter
   dcc_byte_bit_downcounter
@@ -507,8 +510,7 @@ initialisation
   movwf   ADCON1
 
   clrf    LATA
-  movlw   b'00110000'       ; PortA: bit 5 (RA5), setup pushbutton input
-                            ;        bit 4 (RA4), paired mode input
+  movlw   b'00100000'       ; PortA: bit 5 (RA5), setup pushbutton input
   movwf   TRISA
 
   clrf    LATB
@@ -523,7 +525,9 @@ initialisation
   bsf     LATB,CANTX        ; Initialise CAN Tx as recessive
 
   clrf    LATC
-  clrf    TRISC             ; Port C all outputs
+  movlw   b'11000000'       ; PortA: bit 7 (RC7), paired mode input
+                            ;        bit 6 (RC6), RCN213 linear address input
+  movwf   TRISC
 
   clrf    EECON1            ; Disable accesses to program memory
 
@@ -620,9 +624,15 @@ can_normal_wait
   clrf    dcc_rx_checksum
   clrf    dcc_rx_byte_count
 
-  bsf     PAIRED_MODE_FLAG
-  btfss   PAIRED_MODE_INPUT
   bcf     PAIRED_MODE_FLAG
+  btfsc   PAIRED_MODE_INPUT
+  bsf     PAIRED_MODE_FLAG
+
+  bcf     RCN213_LINEAR_ADDRESSING_FLAG
+  btfsc   RCN213_LINEAR_ADDRESSING_INPUT
+  bsf     RCN213_LINEAR_ADDRESSING_FLAG
+  btfsc   RCN213_LINEAR_ADDRESSING_INPUT
+  bsf     PAIRED_MODE_FLAG
 
 slim_setup
   Set_FLiM_LED_Off
