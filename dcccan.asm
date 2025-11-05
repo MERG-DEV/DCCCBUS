@@ -149,14 +149,14 @@ CAN_SIDL  equ b'11100000'
 #define  SETUP_INPUT                     PORTA, 5   ; Setup Switch
 #define  PAIRED_MODE_INPUT               PORTC, 7
 #define  RCN213_LINEAR_ADDRESSING_INPUT  PORTC, 6
-#define  DCC_INPUT                       PORTB,INT0
+#define  DCC_INPUT                       PORTB, INT0
 
-#define  PAIRED_MODE_FLAG               mode_and_state, 6
-#define  RCN213_LINEAR_ADDRESSING_FLAG  mode_and_state, 7
+#define  PAIRED_MODE_FLAG               mode_and_state, 7
+#define  RCN213_LINEAR_ADDRESSING_FLAG  mode_and_state, 6
 
 DCC_PREAMBLE_COUNT  equ 10
 DCC_BYTE_BIT_COUT   equ  8
-#define  DCC_SYNCHRONISE_FLAG  mode_and_state, 7
+#define  DCC_SYNCHRONISE_FLAG  mode_and_state, 0
 
 DCC_ACC_BYTE1_MASK        equ b'11000000'
 DCC_ACC_BYTE1_TEST        equ b'10000000'
@@ -690,10 +690,12 @@ decode_dcc_packet
   movff   dcc_packet_rx_queue_extract, FSR1L
   incf    FSR1L, F          ; FSR1 points to second byte of queued packet
 
-  btfsc   PAIRED_MODE_FLAG
-  call    translate_paired_output_address
   btfss   PAIRED_MODE_FLAG
   call    translate_single_output_address
+  btfsc   PAIRED_MODE_FLAG
+  call    translate_paired_output_address
+  btfsc   RCN213_LINEAR_ADDRESSING_FLAG
+  call    map_to_rcn213_linear_address
 
 enqueue_cbus_event_for_tx
   lfsr    FSR1, EVENT_TX_QUEUE_START
@@ -738,6 +740,56 @@ not_dcc_basic_packet
   movff   PREINC1, event_extra_data
 
   bra     enqueue_cbus_event_for_tx
+
+
+;**********************************************************************
+; On entry and exit FSR1 addresses second byte of queued packet
+;
+translate_single_output_address
+
+  ; From RCN-213, simple accessory decoder output addressing
+  ;
+  ; 10AAAAAA 1aaaCDDd
+  ;   ||||||  +++||||  DCC address bits 8 to 6 (Acc 10 - 8), one's complemented
+  ;   ++++++     ||||  DCC address bits 5 to 0 (Acc 7 - 2)
+  ;              |++|  Accessory output pair index (Acc 1 - 0), range 0 to 3
+  ;              |  +  Accessory indexed pair output, range 0 to 1
+  ;              +---  0 deactivate, 1 activate
+  ;
+  ; DCC base address   (9 bits)   = 000a aaAA AAAA
+  ; Accessory address (11 bits)   = 0aaa AAAA AADD
+  ; Output address    (12 bits)   = aaaA AAAA ADDd
+  ; Event nummber, toggling pairs = Output address - b'1000' (8)
+
+  ; 0000 aaaA -> Event number high
+  swapf   POSTDEC1, W       ; FSR1 points to first byte of queued packet
+  andlw   b'00000111'
+  xorlw   b'00000111'
+  rlncf   WREG
+  btfsc   INDF1, 5
+  bsf     WREG, 0
+  movwf   event_num_high
+
+  ; AAAA Axxx -> Event number low
+  swapf   INDF1, F
+  rrncf   POSTINC1, W       ; FSR1 points to second byte of queued packet
+  andlw   b'11111000'
+  movwf   event_num_low
+
+  ; xxxx xDDd -> Event number low
+  movf    INDF1, W
+  andlw   b'00000111'
+  iorwf   event_num_low, F
+
+  ; Event number now 0000 aaaA AAAA ADDd (output address)
+
+  ; C -> Opcode
+  movlw   OPC_ASOF
+  btfsc   INDF1, 3
+  movlw   OPC_ASON
+  movwf   event_opcode
+
+  return
 
 
 ;**********************************************************************
@@ -794,51 +846,32 @@ translate_paired_output_address
 
 
 ;**********************************************************************
-; On entry and exit FSR1 addresses second byte of queued packet
-;
-translate_single_output_address
+map_to_rcn213_linear_address
+  tstfsz  event_num_high
+  bra     rcn213_address_above_3
 
-  ; From RCN-213, simple accessory decoder output addressing
-  ;
-  ; 10AAAAAA 1aaaCDDd
-  ;   ||||||  +++||||  DCC address bits 8 to 6 (Acc 10 - 8), one's complemented
-  ;   ++++++     ||||  DCC address bits 5 to 0 (Acc 7 - 2)
-  ;              |++|  Accessory output pair index (Acc 1 - 0), range 0 to 3
-  ;              |  +  Accessory indexed pair output, range 0 to 1
-  ;              +---  0 deactivate, 1 activate
-  ;
-  ; DCC base address   (9 bits)   = 000a aaAA AAAA
-  ; Accessory address (11 bits)   = 0aaa AAAA AADD
-  ; Output address    (12 bits)   = aaaA AAAA ADDd
-  ; Event nummber, toggling pairs = Output address - b'1000' (8)
+  movlw   ~3
+  andwf   event_num_low, W
+  btfss   STATUS, Z
+  bra     rcn213_address_above_3
 
-  ; 0000 aaaA -> Event number high
-  swapf   POSTDEC1, W       ; FSR1 points to first byte of queued packet
-  andlw   b'00000111'
-  xorlw   b'00000111'
-  rlncf   WREG
-  btfsc   INDF1, 5
-  bsf     WREG, 0
-  movwf   event_num_high
+  ; DCC accessory address below 3 mapped to top end of range, 2045 - 2048
+  movlw   high (2045)
+  addwf   event_num_high, F
 
-  ; AAAA Axxx -> Event number low
-  swapf   INDF1, F
-  rrncf   POSTINC1, W       ; FSR1 points to second byte of queued packet
-  andlw   b'11111000'
-  movwf   event_num_low
+  movlw   low (2045)
+  addwf   event_num_low, F
+  btfsc   STATUS, C         ; Skip if no overflow from low byte ...
+  incf    event_num_high, F ; ... else add to high byte
 
-  ; xxxx xDDd -> Event number low
-  movf    INDF1, W
-  andlw   b'00000111'
-  iorwf   event_num_low, F
+  return
 
-  ; Event number now 0000 aaaA AAAA ADDd (output address)
-
-  ; C -> Opcode
-  movlw   OPC_ASOF
-  btfsc   INDF1, 3
-  movlw   OPC_ASON
-  movwf   event_opcode
+rcn213_address_above_3
+  ; DCC accessory address starts at 4, map this to event number 1
+  movlw   3
+  subwf   event_num_low, F
+  btfss   STATUS, C         ; Skip if no underflow from low byte ...
+  decf    event_num_high, F ; ... else borrow from high byte
 
   return
 
