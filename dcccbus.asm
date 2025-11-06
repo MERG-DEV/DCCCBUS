@@ -1,4 +1,4 @@
-   title    "dcccan.asm - DCC accessory packet to CBUS short event"
+   title    "dcccbus.asm - DCC accessory packet to CBUS short event"
    list     p=18F2480
    radix    dec
 
@@ -238,7 +238,7 @@ EVENT_TX_QUEUE_SLOT_LENGTH  equ 4
   org  NODE_TYPE_PARAMETER     ; Node type parameter
 
 node_type_name
-  db  "DCCCAN "
+  db  "DCCCBUS"
 
   org  NODE_PARAMETERS
 

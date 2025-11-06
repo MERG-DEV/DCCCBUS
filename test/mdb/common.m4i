@@ -6,7 +6,7 @@ define(set_test_name, {define(test_name, patsubst(__file__, {.m4},))})
 define(set_up_test_simulation,
 Device PIC18F2480
 Hwtool SIM
-Program "../dist/default/production/dcccan.production.cof"
+Program "../dist/default/production/dcccbus.production.cof"
 Stim "./scl/test_name.scl"
 Break *0 1)
 
