@@ -17,6 +17,7 @@
 **/build/
 **/default/
 **/dist/
+**/doc/
 **/logs/
 **/nbproject/Makefile*
 **/nbproject/Package*
