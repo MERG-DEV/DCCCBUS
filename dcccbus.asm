@@ -34,22 +34,22 @@
 ;                                                                     *
 ;**********************************************************************
 ;                                                                     *
-;                             +---+ +---+                             *
-;                        !MCLR| 1 |_| 28|RB7 -> Green LED (SLiM)      *
-;                          RA0| 2     27|RB6 -> Yellow LED (FLiM)     *
-;                          RA1| 3     26|RB5                          *
-;                          RA2| 4     25|RB4                          *
-;                          RA3| 5     24|RB3 <- CANRx                 *
-;                          RA4| 6     23|RB2 -> CANTx                 *
-;     Setup push button -> RA5| 7     22|RB1                          *
-;                    0V -> VSS| 8     21|RB0(INT0) <- DCC             *
-;                    Resonator| 9     20|VDD <- +5V                   *
-;                    Resonator|10     19|VSS <- 0V                    *
-;                          RC0|11     18|RC7 <- Paired outputs        *
-;                          RC1|12     17|RC6 <- RCN-213 linear address*
-;                          RC2|13     16|RC5                          *
-;                          RC3|14     15|RC4                          *
-;                             +---------+                             *
+;                           +---+ +---+                               *
+;                      !MCLR| 1 |_| 28|RB7 -> Green LED (SLiM)        *
+;                        RA0| 2     27|RB6 -> Yellow LED (FLiM)       *
+;                        RA1| 3     26|RB5                            *
+;                        RA2| 4     25|RB4                            *
+;                        RA3| 5     24|RB3 <- CANRx                   *
+;                        RA4| 6     23|RB2 -> CANTx                   *
+;   Setup push button -> RA5| 7     22|RB1                            *
+;                  0V -> VSS| 8     21|RB0(INT0) <- DCC               *
+;                  Resonator| 9     20|VDD <- +5V                     *
+;                  Resonator|10     19|VSS <- 0V                      *
+;                        RC0|11     18|RC7 <- !Paired outputs         *
+;                        RC1|12     17|RC6 <- !RCN-213 linear address *
+;                        RC2|13     16|RC5                            *
+;                        RC3|14     15|RC4                            *
+;                           +---------+                               *
 ;                                                                     *
 ;**********************************************************************
 
@@ -625,13 +625,13 @@ can_normal_wait
   clrf    dcc_rx_byte_count
 
   bcf     PAIRED_MODE_FLAG
-  btfsc   PAIRED_MODE_INPUT
+  btfss   PAIRED_MODE_INPUT ; Active low
   bsf     PAIRED_MODE_FLAG
 
   bcf     RCN213_LINEAR_ADDRESSING_FLAG
-  btfsc   RCN213_LINEAR_ADDRESSING_INPUT
+  btfss   RCN213_LINEAR_ADDRESSING_INPUT    ; Active low
   bsf     RCN213_LINEAR_ADDRESSING_FLAG
-  btfsc   RCN213_LINEAR_ADDRESSING_INPUT
+  btfss   RCN213_LINEAR_ADDRESSING_INPUT    ; Active low
   bsf     PAIRED_MODE_FLAG
 
 slim_setup
