@@ -1,6 +1,6 @@
 set_test_name()
 
-beginning_of_test(3100)
+beginning_of_test(3120)
     begin_test
       --
       set_paired_outputs_on
@@ -28,9 +28,10 @@ beginning_of_test(3100)
       log(Queue 24 individual Activation translated as pair 12 Deactivation)
       input_dcc_basic_acc(24, Activate)
       --
-      log(Queue 26 individual Deactivation translated as pair 13 Activation)
+      log(Queue 26 individual Deactivation ignored)
       input_dcc_basic_acc(26, Deactivate)
       --
+      input_dcc_basic_acc_pair(13, Activate)
       input_dcc_basic_acc_pair(14, Deactivate)
       input_dcc_basic_acc_pair(15, Activate)
       input_dcc_basic_acc_pair(16, Activate)
@@ -169,9 +170,7 @@ beginning_of_test(3100)
       log(Tx 24 individual Activation translated as pair 12 Deactivation)
       tx_wait_for_node_message(OPC_ASOF, 0, 0, 0, EN high,  12, EN low)
       --
-      log(Tx 26 individual Deactivation translated as pair 13 Activation)
       tx_wait_for_node_message(OPC_ASON, 0, 0, 0, EN high,  13, EN low)
-      --
       tx_wait_for_node_message(OPC_ASOF, 0, 0, 0, EN high,  14, EN low)
       tx_wait_for_node_message(OPC_ASON, 0, 0, 0, EN high,  15, EN low)
       tx_wait_for_node_message(OPC_ASON, 0, 0, 0, EN high,  16, EN low)
