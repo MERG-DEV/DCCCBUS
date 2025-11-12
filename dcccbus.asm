@@ -671,7 +671,7 @@ decode_dcc_packet
   movff   dcc_packet_rx_queue_extract, FSR1L
 
   movlw   DCC_ACC_BYTE1_MASK
-  andwf   POSTINC1, W       ; FSR1 points to second byte of queued packet
+  andwf   POSTINC1, W       ; FSR1 points to second byte of queued DCC packet
   xorlw   DCC_ACC_BYTE1_TEST
   bnz     skip_dcc_packet
 
@@ -688,14 +688,12 @@ decode_dcc_packet
   bra     skip_dcc_packet
 
   movff   dcc_packet_rx_queue_extract, FSR1L
-  incf    FSR1L, F          ; FSR1 points to second byte of queued packet
+  incf    FSR1L, F          ; FSR1 points to second byte of queued DCC packet
 
   btfss   PAIRED_MODE_FLAG
   call    translate_single_output_address
   btfsc   PAIRED_MODE_FLAG
   call    translate_paired_output_address
-  btfsc   RCN213_LINEAR_ADDRESSING_FLAG
-  call    map_to_rcn213_linear_address
 
 enqueue_cbus_event_for_tx
   lfsr    FSR1, EVENT_TX_QUEUE_START
@@ -731,7 +729,7 @@ not_dcc_basic_packet
   bra     skip_dcc_packet
 
   movff   dcc_packet_rx_queue_extract, FSR1L
-  incf    FSR1L, F          ; FSR1 points to second byte of queued packet
+  incf    FSR1L, F          ; FSR1 points to second byte of queued DCC packet
 
   call    translate_paired_output_address
 
@@ -743,7 +741,7 @@ not_dcc_basic_packet
 
 
 ;**********************************************************************
-; On entry and exit FSR1 addresses second byte of queued packet
+; On entry and exit FSR1 addresses second byte of queued DCC packet
 ;
 translate_single_output_address
 
@@ -762,7 +760,7 @@ translate_single_output_address
   ; Event nummber, toggling pairs = Output address - b'1000' (8)
 
   ; 0000 aaaA -> Event number high
-  swapf   POSTDEC1, W       ; FSR1 points to first byte of queued packet
+  swapf   POSTDEC1, W       ; FSR1 points to first byte of queued DCC packet
   andlw   b'00000111'
   xorlw   b'00000111'
   rlncf   WREG
@@ -772,7 +770,7 @@ translate_single_output_address
 
   ; AAAA Axxx -> Event number low
   swapf   INDF1, F
-  rrncf   POSTINC1, W       ; FSR1 points to second byte of queued packet
+  rrncf   POSTINC1, W       ; FSR1 points to second byte of queued DCC packet
   andlw   b'11111000'
   movwf   event_num_low
 
@@ -793,7 +791,7 @@ translate_single_output_address
 
 
 ;**********************************************************************
-; On entry and exit FSR1 addresses second byte of queued packet
+; On entry and exit FSR1 addresses second byte of queued DCC packet
 ;
 translate_paired_output_address
 
@@ -812,14 +810,14 @@ translate_paired_output_address
   ; Event nummber, toggling pairs = Accessory address - b'0100' (4)
 
   ; 0000 0aaa -> Event number high
-  swapf   POSTDEC1, W       ; FSR1 points to first byte of queued packet
+  swapf   POSTDEC1, W       ; FSR1 points to first byte of queued DCC packet
   andlw   b'00000111'
   xorlw   b'00000111'
   movwf   event_num_high
 
   ; AAAA AAxx -> Event number low
   rlncf   INDF1, F
-  rlncf   POSTINC1, W       ; FSR1 points to second byte of queued packet
+  rlncf   POSTINC1, W       ; FSR1 points to second byte of queued DCC packet
   andlw   b'11111100'
   movwf   event_num_low
 
@@ -842,10 +840,9 @@ translate_paired_output_address
   movlw   OPC_ASON          ; Activate second output, deactivate first output
   movwf   event_opcode
 
+  btfss   RCN213_LINEAR_ADDRESSING_FLAG
   return
 
-
-;**********************************************************************
 map_to_rcn213_linear_address
   tstfsz  event_num_high
   bra     rcn213_address_above_3
