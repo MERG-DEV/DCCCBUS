@@ -206,6 +206,10 @@ EVENT_TX_QUEUE_SLOT_LENGTH  equ 4
   event_tx_queue_insert
   event_tx_queue_extract
 
+  previous_dcc_packet_byte_1
+  previous_dcc_packet_byte_2
+  previous_dcc_packet_byte_3
+
   event_opcode
   event_num_low
   event_num_high
@@ -688,7 +692,22 @@ decode_dcc_packet
   bra     skip_dcc_packet
 
   movff   dcc_packet_rx_queue_extract, FSR1L
-  incf    FSR1L, F          ; FSR1 points to second byte of queued DCC packet
+  movf    POSTINC1, W
+  xorwf   previous_dcc_packet_byte_1, W
+  btfss   STATUS, Z
+  bra     new_dcc_basic_packet
+
+  movf    INDF1, W
+  xorwf   previous_dcc_packet_byte_2, W
+  btfsc   STATUS, Z
+  bra     skip_dcc_packet
+
+new_dcc_basic_packet
+  movff   dcc_packet_rx_queue_extract, FSR1L
+  movff   POSTINC1, previous_dcc_packet_byte_1
+  movff   INDF1, previous_dcc_packet_byte_2
+
+  ; FSR1 points to second byte of queued DCC packet
 
   btfss   PAIRED_MODE_FLAG
   bra     translate_single_output_address
@@ -731,7 +750,28 @@ not_dcc_basic_packet
   bra     skip_dcc_packet
 
   movff   dcc_packet_rx_queue_extract, FSR1L
-  incf    FSR1L, F          ; FSR1 points to second byte of queued DCC packet
+  movf    POSTINC1, W
+  xorwf   previous_dcc_packet_byte_1, W
+  btfss   STATUS, Z
+  bra     new_dcc_extended_packet
+
+  movf    POSTINC1, W
+  xorwf   previous_dcc_packet_byte_2, W
+  btfss   STATUS, Z
+  bra     new_dcc_extended_packet
+
+  movf    INDF1, W
+  xorwf   previous_dcc_packet_byte_3, W
+  btfsc   STATUS, Z
+  bra     skip_dcc_packet
+
+new_dcc_extended_packet
+  movff   dcc_packet_rx_queue_extract, FSR1L
+  movff   POSTINC1, previous_dcc_packet_byte_1
+  movff   POSTINC1, previous_dcc_packet_byte_2
+  movff   POSTDEC1, previous_dcc_packet_byte_3
+
+  ; FSR1 points to second byte of queued DCC packet
 
   call    translate_paired_output_address
 
