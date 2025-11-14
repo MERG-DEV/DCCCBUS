@@ -142,8 +142,8 @@ SLIM_LED_BIT   equ 7            ; Green LED
 CAN_LOST_ARBITRATION_LIMIT  equ 10
 CAN_RAISE_SIDH_PRIORITY     equ b'11000000'
 
-CAN_SIDH  equ b'10111111'
-CAN_SIDL  equ b'11100000'
+CAN_SIDH  equ b'10000000'
+CAN_SIDL  equ b'00100000'
 
 
 #define  SETUP_INPUT                     PORTA, 5   ; Setup Switch
