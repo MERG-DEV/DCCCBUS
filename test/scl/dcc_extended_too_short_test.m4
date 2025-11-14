@@ -1,6 +1,6 @@
 set_test_name()
 
-beginning_of_test(85)
+beginning_of_test(88)
     begin_test
       --
       set_paired_outputs_on

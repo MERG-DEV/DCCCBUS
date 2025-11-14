@@ -116,14 +116,16 @@ define(tx_arbitration_lost_interrupt,
        CANSTAT <= 16#02#;
        PIR3.ERRIF <= '1';
        wait_for_high_priority_interrupt
-       TXB1CON.TXLARB <= '0';)
+       TXB1CON.TXLARB <= '0';
+       CANSTAT <= 0;)
 
 define(tx_transmission_error_interrupt,
        TXB1CON.TXERR <= '1';
        CANSTAT <= 16#02#;
        PIR3.ERRIF <= '1';
        wait_for_high_priority_interrupt
-       TXB1CON.TXERR <= '0';)
+       TXB1CON.TXERR <= '0';
+       CANSTAT <= 0;)
 
 define(tx_rtr,
        tx_wait_if_not_ready

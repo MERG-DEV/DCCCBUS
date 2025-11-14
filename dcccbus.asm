@@ -430,6 +430,11 @@ not_dcc_interrupt
   bcf     PIR3, ERRIF
 
   banksel TXB1CON
+  movlw   (1 << TXABT) | (1 << TXLARB) | (1 << TXERR)
+  andwf   TXB1CON, W
+  btfsc   STATUS, Z
+  bra     not_can_tx_error_interrupt
+
   btfss   TXB1CON, TXLARB
   bra     tx_error_done
 
@@ -461,6 +466,7 @@ tx_raise_priority
 tx_error_done
   bsf     TXB1CON, TXREQ    ; Clear CAN Tx error flags
 
+not_can_tx_error_interrupt
 not_can_error_interrupt
 exit_high_priority_interrupt
   ; Restore register values protected during interrupt
@@ -497,7 +503,6 @@ initialisation
   clrf    INTCON3
   clrf    INTCON2           ; Pullups enabled on PORTB inputs
                             ; INT0 interrupt on falling edge
-  bsf     IPR3, ERRIP       ; CAN error interrupts are high priority
   bsf     PIE3, ERRIE       ; Enable CAN error interrupts
   bsf     IPR3, ERRIP       ; CAN error interrupts are high priority
 
@@ -571,7 +576,7 @@ can_config_wait
   movwf   CIOCON
 
   movlw   b'10110000'       ; Mode 2, enhanced FIFO
-                            ; FIFO interrupt on 1 Rx buffer remaining
+                            ; FIFO high water mark 1 Rx buffer remaining
                             ; Initially map Rx buffer 0 into Access Bank
   movwf   ECANCON
 
@@ -653,6 +658,7 @@ main_loop
 
   call    decode_dcc_packet
   call    transmit_next_cbus_event
+  call    flush_rx_buffers
 
   bra     main_loop
 
@@ -949,6 +955,24 @@ transmit_next_cbus_event
   bsf     TXB1CON, TXREQ
 
   return
+
+
+;**********************************************************************
+flush_rx_buffers
+
+  ; Roll through rx buffers 7 to 0 clearing full bit, discarding any messages
+  movlw   0x07
+  iorwf   ECANCON, F
+
+flush_next_rx_buffer
+  bcf     RXB0CON, RXFUL
+  movlw   0x07
+  andwf   ECANCON, W
+  btfsc   STATUS, Z
+  return
+
+  decf    ECANCON, F
+  bra     flush_next_rx_buffer
 
 
 ;**********************************************************************
