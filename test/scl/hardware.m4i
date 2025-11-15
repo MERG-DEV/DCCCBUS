@@ -59,7 +59,11 @@ define(set_rcn213_linear_addressing_off, rcn213_linear_addressing_input <= '1';)
 define(set_rcn213_linear_addressing_on, rcn213_linear_addressing_input <= '0';)
 
 define(wait_for_high_priority_interrupt,
-       wait until INTCON < 128;
-       wait until INTCON > 127;)
+       wait until INTCON.GIE_GIEH == '0';
+       wait until INTCON.GIE_GIEH == '1';)
+
+define(wait_for_low_priority_interrupt,
+       wait until INTCON.PEIE_GIEL == '0';
+       wait until INTCON.PEIE_GIEL == '1';)
 
 divert(0)dnl

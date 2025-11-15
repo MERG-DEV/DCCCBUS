@@ -145,6 +145,10 @@ CAN_RAISE_SIDH_PRIORITY     equ b'11000000'
 CAN_SIDH  equ b'10000000'
 CAN_SIDL  equ b'00100000'
 
+ECANMODE  equ b'10110000'   ; Mode 2, enhanced FIFO
+                            ; FIFO high water mark 1 Rx buffer remaining
+                            ; Initially map Rx buffer 0 into Access Bank
+
 
 #define  SETUP_INPUT                     PORTA, 5   ; Setup Switch
 #define  PAIRED_MODE_INPUT               PORTC, 7
@@ -190,6 +194,11 @@ EVENT_TX_QUEUE_SLOT_LENGTH  equ 4
   hpint_BSR
   hpint_STATUS
   hpint_W
+
+  ; Store for register values during low priority interrput
+  lpint_BSR
+  lpint_STATUS
+  lpint_W
 
   mode_and_state            ; bit 7 - Synchronising to end of preamble
                             ; bit 6 - Outputs as complimentary pairs
@@ -424,6 +433,22 @@ shift_dcc_bit_into_byte
 
 dcc_bit_done
 not_dcc_interrupt
+exit_high_priority_interrupt
+  ; Restore register values protected after interrupt
+  movf    hpint_W, W
+  movff   hpint_STATUS, STATUS
+  movff   hpint_BSR, BSR
+  retfie
+
+
+;**********************************************************************
+low_priority_interrupt
+
+  ; Protect register values during interrupt
+  movff   BSR, lpint_BSR
+  movff   STATUS, lpint_STATUS
+  movwf   lpint_W
+
   btfss   PIR3, ERRIF
   bra     not_can_error_interrupt
 
@@ -468,18 +493,11 @@ tx_error_done
 
 not_can_tx_error_interrupt
 not_can_error_interrupt
-exit_high_priority_interrupt
-  ; Restore register values protected during interrupt
-  movf    hpint_W, W
-  movff   hpint_STATUS, STATUS
-  movff   hpint_BSR, BSR
-  retfie
-
-
-;**********************************************************************
-low_priority_interrupt
 exit_low_priority_interrupt
-
+  ; Restore register values protected after interrupt
+  movf    lpint_W, W
+  movff   lpint_STATUS, STATUS
+  movff   lpint_BSR, BSR
   retfie
 
 
@@ -504,7 +522,7 @@ initialisation
   clrf    INTCON2           ; Pullups enabled on PORTB inputs
                             ; INT0 interrupt on falling edge
   bsf     PIE3, ERRIE       ; Enable CAN error interrupts
-  bsf     IPR3, ERRIP       ; CAN error interrupts are high priority
+  bcf     IPR3, ERRIP       ; CAN error interrupts are low priority
 
   lfsr    FSR0, 0x000       ; Clear data memory bank 0
   call    clear_ram_loop
@@ -575,9 +593,7 @@ can_config_wait
                             ; Disable message capture
   movwf   CIOCON
 
-  movlw   b'10110000'       ; Mode 2, enhanced FIFO
-                            ; FIFO high water mark 1 Rx buffer remaining
-                            ; Initially map Rx buffer 0 into Access Bank
+  movlw   ECANMODE
   movwf   ECANCON
 
   movlw   b'00100100'       ; Receive valid messages as per acceptance filters
@@ -647,6 +663,7 @@ slim_setup
   Set_FLiM_LED_Off
   Set_SLiM_LED_On
 
+  bsf     INTCON, GIEL      ; Enable low priority interrupts
   bsf     INTCON, GIEH      ; Enable high priority interrupts
 
   ; Drop through to main_loop
