@@ -107,7 +107,7 @@
 MANUFACTURER_ID               equ MANU_MERG
 FIRMWARE_MAJOR_VERSION        equ 1
 FIRMWARE_MINOR_VERSION        equ "a"
-MODULE_TYPE                   equ 99
+MODULE_TYPE                   equ MTYP_CANDEV
 NUMBER_OF_EVENTS              equ 0
 VARIABLES_PER_EVENT           equ 0
 NUMBER_OF_HASH_TABLE_ENTRIES  equ 0

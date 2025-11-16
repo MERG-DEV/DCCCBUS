@@ -3,6 +3,7 @@ define(MANU_MERG, 165)dnl
 define(MANU_SPROG, 44)dnl
 define(MANU_ROCRAIL, 70)dnl
 define(MANU_SPECTRUM, 80)dnl
+define(MANU_MERG_VLCB, 250)dnl
 define(MANU_SYSPIXIE, 249)dnl
 define(MANU_RME, 248)dnl
 define(MTYP_SLIM, 0)dnl
@@ -69,7 +70,7 @@ define(MTYP_CANCOMPUTE, 60)dnl
 define(MTYP_CANRC522, 61)dnl
 define(MTYP_CANINP, 62)dnl
 define(MTYP_CANOUT, 63)dnl
-define(MTYP_CANEMIO, 64)dnl
+define(MTYP_CANXIO, 64)dnl
 define(MTYP_CANCABDC, 65)dnl
 define(MTYP_CANRCOM, 66)dnl
 define(MTYP_CANMP3, 67)dnl
@@ -93,7 +94,7 @@ define(MTYP_CANPIXEL, 84)dnl
 define(MTYP_CANCABPE, 85)dnl
 define(MTYP_CANSMARTTD, 86)dnl
 define(MTYP_CANARGB, 87)dnl
-define(MTYP_DCCCBUS, 88)dnl
+define(MTYP_CANCDU_U, 88)dnl
 define(MTYP_VLCB, 16#FC#)dnl
 define(MTYP_CAN_SW, 16#FF#)dnl
 define(MTYP_EMPTY, 16#FE#)dnl
@@ -361,3 +362,8 @@ define(P32MX795F512, 38)dnl
 define(ARM1176JZF_S, 1)dnl
 define(ARMCortex_A7, 2)dnl
 define(ARMCortex_A53, 3)dnl
+define(CANID_CANCMD, 16#72#)dnl
+define(CANID_CANUSB, 16#7C#)dnl
+define(CANID_FCU, 16#7D#)dnl
+define(CANID_JMRI, 16#7E#)dnl
+define(CANID_CANEther, 16#7F#)dnl
