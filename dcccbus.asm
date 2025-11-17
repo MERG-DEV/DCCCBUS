@@ -101,7 +101,7 @@
 ;**********************************************************************
 
   nolist
-  include "cbuslib/cbusdefs.inc"
+  include "cbuslib_asm/cbusdefs.inc"
   list
 
 MANUFACTURER_ID               equ MANU_MERG
@@ -181,7 +181,7 @@ EVENT_TX_QUEUE_SLOT_LENGTH  equ 4
 
 
   ;nolist
-  include   "cbuslib/boot_loader.inc"
+  include   "cbuslib_asm/boot_loader.inc"
   ;list
 
 
