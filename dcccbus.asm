@@ -124,17 +124,17 @@ NODE_PARAMETERS      equ 0x0820
 EEPROM_DATA          equ 0xF00000
 BOOTLOAD_EE          equ 0xF000FE
 
-NUMBER_OF_NODE_PARAMETERS  equ     24
+NUMBER_OF_NODE_PARAMETERS  equ 24
 AFTER_NODE_PARAMETERS      equ NODE_PARAMETERS + NUMBER_OF_NODE_PARAMETERS
 
 FLIM_LED_PORT  equ LATB
-FLIM_LED_BIT   equ 6            ; Yellow LED
+FLIM_LED_BIT   equ RB6      ; Yellow LED
 #define  FLiM_LED         FLIM_LED_PORT, FLIM_LED_BIT
 #define  Set_FLiM_LED_On  bsf FLiM_LED
 #define  Set_FLiM_LED_Off bcf FLiM_LED
 
 SLIM_LED_PORT  equ LATB
-SLIM_LED_BIT   equ 7            ; Green LED
+SLIM_LED_BIT   equ RB7          ; Green LED
 #define  SLiM_LED         SLIM_LED_PORT, SLIM_LED_BIT
 #define  Set_SLiM_LED_On  bsf SLiM_LED
 #define  Set_SLiM_LED_Off bcf SLiM_LED
@@ -150,9 +150,9 @@ ECANMODE  equ b'10110000'   ; Mode 2, enhanced FIFO
                             ; Initially map Rx buffer 0 into Access Bank
 
 
-#define  SETUP_INPUT                     PORTA, 5   ; Setup Switch
-#define  PAIRED_MODE_INPUT               PORTC, 7
-#define  RCN213_LINEAR_ADDRESSING_INPUT  PORTC, 6
+#define  SETUP_INPUT                     PORTA, RA5
+#define  PAIRED_MODE_INPUT               PORTC, RC7
+#define  RCN213_LINEAR_ADDRESSING_INPUT  PORTC, RC6
 #define  DCC_INPUT                       PORTB, INT0
 
 #define  PAIRED_MODE_FLAG               mode_and_state, 7
@@ -227,7 +227,7 @@ EVENT_TX_QUEUE_SLOT_LENGTH  equ 4
   tx_lost_arbitration_count
 
   ENDC
-#if (0xFF) < (event_extra_data)
+#if (0xFF) < (tx_lost_arbitration_count)
     error "RAM allocation beyond end of Bank 0"
 #endif
 
@@ -468,7 +468,7 @@ low_priority_interrupt
 
   ; Bits 7 and 6 of SIDH used for Tx message priority,
   ;   10 = Normal, 01 = High, 00 = Top
-  btfss   TXB1SIDH, 7               ; Skip if priority is normal ...
+  btfss   TXB1SIDH, SID10           ; Skip if priority is normal ...
   bra     tx_at_raised_priority     ; ... else already at high or top priority
 
   movlw   CAN_LOST_ARBITRATION_LIMIT
@@ -477,7 +477,7 @@ low_priority_interrupt
   bra     tx_raise_priority
 
 tx_at_raised_priority
-  btfss   TXB1SIDH, 6               ; Skip if priority is high ...
+  btfss   TXB1SIDH, SID9            ; Skip if priority is high ...
   bra     tx_error_done             ; ... else already at top priority
 
   movlw   CAN_LOST_ARBITRATION_LIMIT * 2
@@ -808,8 +808,8 @@ translate_single_output_address
   ; From RCN-213, simple accessory decoder output addressing
   ;
   ; 10AAAAAA 1aaaCDDd
-  ;   ||||||  +++||||  DCC address bits 8 to 6 (Acc 10 - 8), one's complemented
-  ;   ++++++     ||||  DCC address bits 5 to 0 (Acc 7 - 2)
+  ;   ||||||  +++||||  DCC address bits 8 - 6 (Acc 10 - 8), one's complemented
+  ;   ++++++     ||||  DCC address bits 5 - 0 (Acc 7 - 2)
   ;              |++|  Accessory output pair index (Acc 1 - 0), range 0 to 3
   ;              |  +  Accessory indexed pair output, range 0 to 1
   ;              +---  0 deactivate, 1 activate
@@ -819,28 +819,29 @@ translate_single_output_address
   ; Output address    (12 bits)   = aaaA AAAA ADDd
   ; Event nummber, toggling pairs = Output address - b'1000' (8)
 
-  ; FSR1 addresses second byte of queued DCC packet
-  ; 0000 aaaA -> Event number high
-  swapf   POSTDEC1, W       ; FSR1 addresses first byte of queued DCC packet
-  andlw   b'00000111'
-  xorlw   b'00000111'
-  rlncf   WREG
-  btfsc   INDF1, 5
-  bsf     WREG, 0
-  movwf   event_num_high
+  ; FSR1 initially points to second byte of DCC packet
+  ; 0000 aaaA (DCC address bits 8 - 5) -> Event number high
+  swapf   POSTDEC1, W       ; CDDd 1aaa, FSR1 -> first byte of DCC packet
+  andlw   b'00000111'       ; 0000 0aaa
+  xorlw   b'00000111'       ; 0000 0AAA, DCC address bits 8 - 6 uncomplemented
+  ; Put bit 5 of DCC address into event number high
+  rlncf   WREG              ; 0000 AAA0
+  btfsc   INDF1, 5          ; Skip if bit 5 of DCC address not set
+  bsf     WREG, 0           ; 0000 AAA1
+  movwf   event_num_high    ; 0000 AAAA, Output address bits 11 - 8
 
-  ; AAAA Axxx -> Event number low
-  swapf   INDF1, F
-  rrncf   POSTINC1, W       ; FSR1 addresses second byte of queued DCC packet
-  andlw   b'11111000'
-  movwf   event_num_low
+  ; AAAA Axxx (DCC address bits 4 - 0) -> Event number low
+  swapf   INDF1, F          ; AAAA 10AA
+  rrncf   POSTINC1, W       ; AAAA A10A, FSR1 -> second byte of DCC packet
+  andlw   b'11111000'       ; AAAA A000
+  movwf   event_num_low     ; AAAA A000, Output address bits 7 - 3
 
-  ; xxxx xDDd -> Event number low
-  movf    INDF1, W
-  andlw   b'00000111'
-  iorwf   event_num_low, F
+  ; xxxx xDDd (Output pair and output of pair) -> Event number low
+  movf    INDF1, W          ; 1aaa CDDd
+  andlw   b'00000111'       ; 0000 0DDd
+  iorwf   event_num_low, F  ; AAAA ADDd, Output address bits 7 - 0
 
-  ; Event number now 0000 aaaA AAAA ADDd (output address)
+  ; Event number now 0000 aaaA AAAA ADDd (Output address)
 
   ; C -> Opcode
   movlw   OPC_ASOF
@@ -855,41 +856,40 @@ translate_single_output_address
 ; On entry and exit FSR1 addresses second byte of queued DCC packet
 ;
 translate_paired_output_address
-
   ; From RCN-213, simple accessory decoder output addressing
   ;
   ; 10AAAAAA 1aaaCDDd
-  ;   ||||||  +++||||  DCC address bits 8 to 6 (Acc 10 - 8), one's complemented
-  ;   ++++++     ||||  DCC address bits 5 to 0 (Acc 7 - 2)
+  ;   ||||||  +++||||  DCC address bits 8 - 6 (Acc 10 - 8), one's complemented
+  ;   ++++++     ||||  DCC address bits 5 - 0 (Acc 7 - 2)
   ;              |++|  Accessory output pair index (Acc 1 - 0), range 0 to 3
   ;              |  +  Accessory indexed pair output, range 0 to 1
   ;              +---  0 deactivate, 1 activate
   ;
   ; DCC base address   (9 bits)   = 000a aaAA AAAA
   ; Accessory address (11 bits)   = 0aaa AAAA AADD
-  ; Output address    (12 bits)   = aaaA AAAA ADDd
   ; Event nummber, toggling pairs = Accessory address - b'0100' (4)
 
-  ; 0000 0aaa -> Event number high
-  swapf   POSTDEC1, W       ; FSR1 addresses first byte of queued DCC packet
-  andlw   b'00000111'
-  xorlw   b'00000111'
-  movwf   event_num_high
+  ; FSR1 initially points to second byte of DCC packet
+  ; 0000 0aaa (DCC address bits 8 - 6) -> Event number high
+  swapf   POSTDEC1, W       ; CDDd 1aaa, FSR1 -> first byte of DCC packet
+  andlw   b'00000111'       ; 0000 0aaa
+  xorlw   b'00000111'       ; 0000 0AAA, DCC address bits 8 - 6 uncomplemented
+  movwf   event_num_high    ; 0000 0AAA, Accessory address bits 10 - 8
 
-  ; AAAA AAxx -> Event number low
-  rlncf   INDF1, F
-  rlncf   POSTINC1, W       ; FSR1 addresses second byte of queued DCC packet
-  andlw   b'11111100'
-  movwf   event_num_low
+  ; AAAA AAxx (DCC address bits 5 - 0) -> Event number low
+  rlncf   INDF1, F          ; 0AAA AAA1
+  rlncf   POSTINC1, W       ; AAAA AA10, FSR1 -> second byte of DCC packet
+  andlw   b'11111100'       ; AAAA AA00
+  movwf   event_num_low     ; AAAA AA00, Accessory address bits 7 - 2
 
-  ; xxxx xxDD -> Event number low
-  rrncf   INDF1, W
-  andlw   b'00000011'
-  iorwf   event_num_low, F
+  ; xxxx xxDD (Output pair) -> Event number low
+  rrncf   INDF1, W          ; d1aa aCDD
+  andlw   b'00000011'       ; 0000 00DD
+  iorwf   event_num_low, F  ; AAAA AADD, Accessory address bits 7 - 0
 
-  ; Event number now 0000 0aaa AAAA AADD (accessory address)
+  ; Event number now 0000 0aaa AAAA AADD (Accessory address)
 
-  ; d -> Opcode
+  ; d (Output of pair) -> Opcode
   movlw   OPC_ASOF          ; d = 0, activating first output
   btfsc   INDF1, 0
   movlw   OPC_ASON          ; d = 1, activating second output
