@@ -1,10 +1,9 @@
 set_test_name()
 
-beginning_of_test(180)
+beginning_of_test(182)
     begin_test
       --
       set_paired_outputs_on
-      set_rcn213_linear_addressing_off
       --
       configure_can
       --

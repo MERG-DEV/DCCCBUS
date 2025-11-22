@@ -34,7 +34,11 @@ define(beginning_of_test,
 define(begin_test,
        begin
          log(START)
-         test_state := pass;)
+         test_state := pass;
+         --
+         set_paired_outputs_off
+         set_rcn213_linear_addressing_off
+         set_cancmd_addressing_off)
 
 define(stop_test,
        PC <= 0;

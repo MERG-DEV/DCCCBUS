@@ -58,6 +58,10 @@ define(rcn213_linear_addressing_input, RC6)
 define(set_rcn213_linear_addressing_off, rcn213_linear_addressing_input <= '1';)
 define(set_rcn213_linear_addressing_on, rcn213_linear_addressing_input <= '0';)
 
+define(cancmd_addressing_input, RC5)
+define(set_cancmd_addressing_off, cancmd_addressing_input <= '1';)
+define(set_cancmd_addressing_on, cancmd_addressing_input <= '0';)
+
 define(wait_for_high_priority_interrupt,
        wait until INTCON.GIE_GIEH == '0';
        wait until INTCON.GIE_GIEH == '1';)

@@ -3,9 +3,6 @@ set_test_name()
 beginning_of_test(248)
     begin_test
       --
-      set_paired_outputs_off
-      set_rcn213_linear_addressing_off
-      --
       configure_can
       --
       wait_until_slim -- Booted into SLiM

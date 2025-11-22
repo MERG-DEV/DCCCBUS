@@ -47,7 +47,7 @@
 ;                  Resonator|10     19|VSS <- 0V                      *
 ;                        RC0|11     18|RC7 <- !Paired outputs         *
 ;                        RC1|12     17|RC6 <- !RCN-213 linear address *
-;                        RC2|13     16|RC5                            *
+;                        RC2|13     16|RC5 <- !CANCMD address offset  *
 ;                        RC3|14     15|RC4                            *
 ;                           +---------+                               *
 ;                                                                     *
@@ -153,10 +153,12 @@ ECANMODE  equ b'10110000'   ; Mode 2, enhanced FIFO
 #define  SETUP_INPUT                     PORTA, RA5
 #define  PAIRED_MODE_INPUT               PORTC, RC7
 #define  RCN213_LINEAR_ADDRESSING_INPUT  PORTC, RC6
+#define  CANCMD_ADDRESS_OFFSET_INPUT     PORTC, RC5
 #define  DCC_INPUT                       PORTB, INT0
 
 #define  PAIRED_MODE_FLAG               mode_and_state, 7
 #define  RCN213_LINEAR_ADDRESSING_FLAG  mode_and_state, 6
+#define  CANCMD_ADDRESS_OFFSET_FLAG     mode_and_state, 5
 
 DCC_PREAMBLE_COUNT  equ 10
 DCC_BYTE_BIT_COUT   equ  8
@@ -203,6 +205,7 @@ EVENT_TX_QUEUE_SLOT_LENGTH  equ 4
   mode_and_state            ; bit 7 - Synchronising to end of preamble
                             ; bit 6 - Outputs as complimentary pairs
                             ; bit 5 - Use RCN-213 linear accessory addressing
+                            ; bit 4 - Use CANCMD accessory address offset
 
   dcc_preamble_downcounter
   dcc_byte_bit_downcounter
@@ -552,8 +555,9 @@ initialisation
   bsf     LATB,CANTX        ; Initialise CAN Tx as recessive
 
   clrf    LATC
-  movlw   b'11000000'       ; PortA: bit 7 (RC7), paired mode input
+  movlw   b'11100000'       ; PortA: bit 7 (RC7), paired mode input
                             ;        bit 6 (RC6), RCN213 linear address input
+                            ;        bit 5 (RC5), CANCMD address offset input
   movwf   TRISC
 
   clrf    EECON1            ; Disable accesses to program memory
@@ -653,11 +657,19 @@ can_normal_wait
   btfss   PAIRED_MODE_INPUT ; Active low
   bsf     PAIRED_MODE_FLAG
 
-  bcf     RCN213_LINEAR_ADDRESSING_FLAG
-  btfss   RCN213_LINEAR_ADDRESSING_INPUT    ; Active low
-  bsf     RCN213_LINEAR_ADDRESSING_FLAG
-  btfss   RCN213_LINEAR_ADDRESSING_INPUT    ; Active low
+  bcf     CANCMD_ADDRESS_OFFSET_FLAG
+  btfss   CANCMD_ADDRESS_OFFSET_INPUT       ; Active low
+  bsf     CANCMD_ADDRESS_OFFSET_FLAG
+  btfss   CANCMD_ADDRESS_OFFSET_INPUT       ; Active low
   bsf     PAIRED_MODE_FLAG
+
+  bcf     RCN213_LINEAR_ADDRESSING_FLAG
+  btfsc   RCN213_LINEAR_ADDRESSING_INPUT    ; Active low
+  bra     slim_setup
+
+  bsf     RCN213_LINEAR_ADDRESSING_FLAG
+  bsf     PAIRED_MODE_FLAG
+  bcf     CANCMD_ADDRESS_OFFSET_FLAG
 
 slim_setup
   Set_FLiM_LED_Off
@@ -736,6 +748,7 @@ new_dcc_basic_packet
   bra     translate_single_output_address
 
   call    translate_paired_output_address
+  ; FSR1 still points to second byte of queued DCC packet
   btfss   INDF1, 3          ; In paired mode activation bit, C, must be set
   bra     skip_dcc_packet
 
@@ -895,7 +908,39 @@ translate_paired_output_address
   movlw   OPC_ASON          ; d = 1, activating second output
   movwf   event_opcode
 
-  btfss   RCN213_LINEAR_ADDRESSING_FLAG
+  btfsc   RCN213_LINEAR_ADDRESSING_FLAG
+  bra     map_to_rcn213_linear_address
+
+  btfss   CANCMD_ADDRESS_OFFSET_FLAG
+  return
+
+map_to_cancmd_address
+  tstfsz  event_num_high
+  bra     cancmd_address_above_3
+
+  movlw   ~3
+  andwf   event_num_low, W
+  btfss   STATUS, Z
+  bra     cancmd_address_above_3
+
+  ; DCC accessory address below 4 mapped to top end of range, 2044 - 2047
+  movlw   high (2044)
+  addwf   event_num_high, F
+
+  movlw   low (2044)
+  addwf   event_num_low, F
+  btfsc   STATUS, C         ; Skip if no overflow from low byte ...
+  incf    event_num_high, F ; ... else add to high byte
+
+  return
+
+cancmd_address_above_3
+  ; DCC accessory address starts at 4, map this to event number 0
+  movlw   4
+  subwf   event_num_low, F
+  btfss   STATUS, C         ; Skip if no underflow from low byte ...
+  decf    event_num_high, F ; ... else borrow from high byte
+
   return
 
 map_to_rcn213_linear_address
@@ -907,7 +952,7 @@ map_to_rcn213_linear_address
   btfss   STATUS, Z
   bra     rcn213_address_above_3
 
-  ; DCC accessory address below 3 mapped to top end of range, 2045 - 2048
+  ; DCC accessory address below 4 mapped to top end of range, 2045 - 2048
   movlw   high (2045)
   addwf   event_num_high, F
 
