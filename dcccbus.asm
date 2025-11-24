@@ -492,7 +492,7 @@ tx_raise_priority
   addwf   TXB1SIDH, F
 
 tx_error_done
-  bsf     TXB1CON, TXREQ    ; Clear CAN Tx error flags
+  bsf     TXB1CON, TXREQ    ; Repeat transmission, clears CAN Tx error flags
 
 not_can_tx_error_interrupt
 not_can_error_interrupt
