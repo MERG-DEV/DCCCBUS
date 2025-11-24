@@ -9,17 +9,21 @@ define(tx_check_data,
 define(tx_test_data,
        {ifelse( $2, {}, {--}, tx_check_data($1,  $2,   $3))})
 
-define(tx2_wait_if_not_ready,
-       if TXB2CON.TXREQ == '0' then
-         {ifelse($1, {}, log(Awaiting Tx2), log(Awaiting Tx2 for $1 ms))}
-         {ifelse($1, {}, wait until TXB2CON.TXREQ == '1';,
-                         wait until TXB2CON.TXREQ == '1' for $1 ms;)}
+define(TXBNCON, TXB$1CON)
+
+define(txN_wait_if_not_ready,
+       if TXBNCON($1).TXREQ == '0' then
+         {ifelse($2, {}, log(Awaiting Tx), log(Awaiting Tx for $2 ms))}
+         {ifelse($2, {}, wait until TXBNCON($1).TXREQ == '1';,
+                         wait until TXBNCON($1).TXREQ == '1' for $2 ms;)}
        end if;
-       if TXB2CON.TXREQ == '1' then
-         log(Tx2)
+       if TXBNCON($1).TXREQ == '1' then
+         log(Tx)
        else
-         {ifelse($1, {}, log(No Tx2), log(No Tx2 in $1 ms))}
+         {ifelse($2, {}, log(No Tx), log(No Tx in $2 ms))}
        end if;)
+
+define(tx2_wait_if_not_ready, txN_wait_if_not_ready(2, $1))
 
 define(tx_wait_for_rtr_response,
        tx2_wait_if_not_ready
@@ -39,17 +43,7 @@ define(tx_check_no_rtr_response,
          log(No RTR response sent in $1 ms)
        end if;)
 
-define(tx_wait_if_not_ready,
-       if TXB1CON.TXREQ == '0' then
-         {ifelse($1, {}, log(Awaiting Tx), log(Awaiting Tx for $1 ms))}
-         {ifelse($1, {}, wait until TXB1CON.TXREQ == '1';,
-                         wait until TXB1CON.TXREQ == '1' for $1 ms;)}
-       end if;
-       if TXB1CON.TXREQ == '1' then
-         log(Tx)
-       else
-         {ifelse($1, {}, log(No Tx), log(No Tx in $1 ms))}
-       end if;)
+define(tx_wait_if_not_ready, txN_wait_if_not_ready(1, $1))
 
 define(tx_check_for_no_message,
        log(Checking no Tx of $2 for $1 ms)
@@ -72,6 +66,9 @@ define(tx_check_no_message,
          {ifelse($1, {}, log(No message sent), log(No message sent in $1 ms))}
        end if;)
 
+define(tx_data_count,
+       {ifelse($1, {}, 0, {incr(tx_data_count(shift(shift($@))))})})
+
 define(tx_wait_for_message,
        log(Waiting for Tx of $1)
        tx_wait_if_not_ready
@@ -84,22 +81,7 @@ define(tx_wait_for_message,
        {tx_test_data(TXB1D5, $12,  $13)}
        {tx_test_data(TXB1D6, $14,  $15)}
        {tx_test_data(TXB1D7, $16,  $17)}
-       {tx_test_data(TXB1DLC, ifelse($16, {},
-                                ifelse($14, {},
-                                  ifelse($12, {},
-                                    ifelse($10, {},
-                                      ifelse($8, {},
-                                        ifelse($6, {},
-                                          ifelse($4, {},
-                                            ifelse($2, {},
-                                                    1),
-                                                  2),
-                                                3),
-                                              4),
-                                            5),
-                                          6),
-                                        7),
-                                      8), Frame length)})
+       {tx_test_data(TXB1DLC, tx_data_count(shift($@)), Frame length)})
 
 define(tx_wait_for_node_message,
        {tx_wait_for_message(node message, $1, Opcode, $2, Node Number (high),
