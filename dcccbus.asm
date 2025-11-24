@@ -46,8 +46,8 @@
 ;                  Resonator| 9     20|VDD <- +5V                     *
 ;                  Resonator|10     19|VSS <- 0V                      *
 ;                        RC0|11     18|RC7 <- !Paired outputs         *
-;                        RC1|12     17|RC6 <- !RCN-213 linear address *
-;                        RC2|13     16|RC5 <- !CANCMD address offset  *
+;                        RC1|12     17|RC6 <- !CANCMD address offset  *
+;                        RC2|13     16|RC5 <- !RCN-213 linear address *
 ;                        RC3|14     15|RC4                            *
 ;                           +---------+                               *
 ;                                                                     *
@@ -152,8 +152,8 @@ ECANMODE  equ b'10110000'   ; Mode 2, enhanced FIFO
 
 #define  SETUP_INPUT                     PORTA, RA5
 #define  PAIRED_MODE_INPUT               PORTC, RC7
-#define  RCN213_LINEAR_ADDRESSING_INPUT  PORTC, RC6
-#define  CANCMD_ADDRESS_OFFSET_INPUT     PORTC, RC5
+#define  CANCMD_ADDRESS_OFFSET_INPUT     PORTC, RC6
+#define  RCN213_LINEAR_ADDRESSING_INPUT  PORTC, RC5
 #define  DCC_INPUT                       PORTB, INT0
 
 #define  PAIRED_MODE_FLAG               mode_and_state, 7

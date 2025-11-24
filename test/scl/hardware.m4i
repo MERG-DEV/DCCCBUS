@@ -54,11 +54,11 @@ define(paired_outputs_input, RC7)
 define(set_paired_outputs_off, paired_outputs_input <= '1';)
 define(set_paired_outputs_on, paired_outputs_input <= '0';)
 
-define(rcn213_linear_addressing_input, RC6)
+define(rcn213_linear_addressing_input, RC5)
 define(set_rcn213_linear_addressing_off, rcn213_linear_addressing_input <= '1';)
 define(set_rcn213_linear_addressing_on, rcn213_linear_addressing_input <= '0';)
 
-define(cancmd_addressing_input, RC5)
+define(cancmd_addressing_input, RC6)
 define(set_cancmd_addressing_off, cancmd_addressing_input <= '1';)
 define(set_cancmd_addressing_on, cancmd_addressing_input <= '0';)
 
