@@ -95,25 +95,19 @@ define(tx_wait_for_cmderr_message,
                             $1, Node Number (high), $2, Node Number (low),
                             $3, error number)})
 
-define(tx_arbitration_lost_interrupt,
+define(tx_error_interrupt,
        tx_wait_if_not_ready
-       TXB1CON.TXLARB <= '1';
+       TXB1CON.$1 <= '1';
        CANSTAT <= 16#02#;
        PIR3.ERRIF <= '1';
        wait_for_low_priority_interrupt
-       TXB1CON.TXLARB <= '0';
+       TXB1CON.$1 <= '0';
        CANSTAT <= 0;
        tx_check_ready(1))
 
-define(tx_transmission_error_interrupt,
-       tx_wait_if_not_ready
-       TXB1CON.TXERR <= '1';
-       CANSTAT <= 16#02#;
-       PIR3.ERRIF <= '1';
-       wait_for_low_priority_interrupt
-       TXB1CON.TXERR <= '0';
-       CANSTAT <= 0;
-       tx_check_ready(1))
+define(tx_arbitration_lost_interrupt, tx_error_interrupt(TXLARB))
+
+define(tx_transmission_error_interrupt, tx_error_interrupt(TXERR))
 
 define(tx_rtr,
        tx_wait_if_not_ready
