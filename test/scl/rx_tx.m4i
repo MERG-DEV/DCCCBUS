@@ -147,36 +147,40 @@ define(rx_wait_if_not_ready,
        end if;)
 
 define(rx_frame,
-       RXB0CON.RXFUL <= '1';
-       RXB0DLC <= 16#0$1#;
-       COMSTAT.FIFOEMPTY <= '1';
-       CANSTAT <= 16#0C#;
-       PIR3.RXB0IF <= '1';
        rx_wait_if_not_ready
-       COMSTAT <= 0;
-       log(Rx))
+       CANCON <= 16#0$1#;
+       CANSTAT <= 16#0{eval(0x10 | $1, 16)}#;
+       COMSTAT.RXB0OVFL_nFIFOEMPTY <= '1';
+       RXB0DLC <= 16#0$2#;
+       RXB0CON.RXFUL <= '1';
+       log(Rx)
+       rx_wait_if_not_ready
+       {check_data(ECANCON, 16#0eval(0xB0 | $1, 16)#, ECANCON)}
+       COMSTAT <= 0;)
 
 define(rx_rtr,
-       rx_frame(40))
+       rx_frame(0, 40))
 
 define(rx_sid,
        RXB0SIDH <= $1;
        RXB0SIDL <= $2;
-       rx_frame(0))
+       rx_frame(0, 0))
 
 define(rx_load_data,
        {ifelse($2, {}, $1 <= 0;, $1 <= $2;)})
 
-define(rx_data,
-       {rx_load_data(RXB0D0, $1)}
-       {rx_load_data(RXB0D1, $2)}
-       {rx_load_data(RXB0D2, $3)}
-       {rx_load_data(RXB0D3, $4)}
-       {rx_load_data(RXB0D4, $5)}
-       {rx_load_data(RXB0D5, $6)}
-       {rx_load_data(RXB0D6, $7)}
-       {rx_load_data(RXB0D7, $8)}
-       {rx_frame($#)})
+define(fifo_rx_data,
+       {rx_load_data(RXB0D0, $2)}
+       {rx_load_data(RXB0D1, $3)}
+       {rx_load_data(RXB0D2, $4)}
+       {rx_load_data(RXB0D3, $5)}
+       {rx_load_data(RXB0D4, $6)}
+       {rx_load_data(RXB0D5, $7)}
+       {rx_load_data(RXB0D6, $8)}
+       {rx_load_data(RXB0D7, $9)}
+       {rx_frame($1, eval($# - 1))})
+
+define(rx_data, fifo_rx_data(0, $*))
 
 define(rx_data_file_event,
        read(data_file, RXB0D0, 1); -- Opcode
@@ -184,14 +188,14 @@ define(rx_data_file_event,
        read(data_file, RXB0D2, 1); -- Node low
        read(data_file, RXB0D3, 1); -- Event high
        read(data_file, RXB0D4, 1); -- Event low
-       rx_frame(5))
+       rx_frame(0, 5))
 
 define(enter_learn_mode,
-       rx_data(OPC_NNLRN, $1, $2) -- NNLRN, CBUS enter learn mode
+       {rx_data(OPC_NNLRN, $*) -- NNLRN, CBUS enter learn mode}
        wait_until_idle)
 
 define(exit_learn_mode,
-       rx_data(OPC_NNULN, $1, $2) -- NNULN, CBUS exit learn mode
+       {rx_data(OPC_NNULN, $*) -- NNULN, CBUS exit learn mode}
        wait_until_idle)
 
 define(rx_data_file_unlearn,
@@ -200,7 +204,7 @@ define(rx_data_file_unlearn,
        read(data_file, RXB0D2, 1); -- Node low
        read(data_file, RXB0D3, 1); -- Event high
        read(data_file, RXB0D4, 1); -- Event low
-       rx_frame(7))
+       rx_frame(0, 5))
 
 define(rx_data_file_learn,
        RXB0D0 <= OPC_EVLRN; -- Opcode
@@ -210,7 +214,7 @@ define(rx_data_file_learn,
        read(data_file, RXB0D4, 1); -- Event low
        read(data_file, RXB0D5, 1); -- Event variable index
        read(data_file, RXB0D6, 1); -- Event variable value
-       rx_frame(7))
+       rx_frame(0, 7))
 
 define(rx_data_file_indexed_learn,
        RXB0D0 <= OPC_EVLRNI; -- Opcode
@@ -221,33 +225,7 @@ define(rx_data_file_indexed_learn,
        read(data_file, RXB0D5, 1); -- Event index
        read(data_file, RXB0D6, 1); -- Event variable index
        read(data_file, RXB0D7, 1); -- Event variable value
-       rx_frame(8))
-
-define(rxb1_wait_if_not_ready,
-       if RXB1CON.RXFUL != '0' then
-         log(Waiting to RxB1)
-         wait until RXB1CON.RXFUL == '0';
-         log(Ready to RxB1)
-       end if;)
-
-define(rxb1_frame,
-       RXB1DLC <= 16#0$1#;
-       RXB1CON.RXFUL <= '1';
-       CANSTAT <= 16#0A#;
-       PIR3.RXB1IF <= '1';
-       rxb1_wait_if_not_ready
-       log(RxB1))
-
-define(rxb1_data,
-       {rx_load_data(RXB1D0, $1)}
-       {rx_load_data(RXB1D1, $2)}
-       {rx_load_data(RXB1D2, $3)}
-       {rx_load_data(RXB1D3, $4)}
-       {rx_load_data(RXB1D4, $5)}
-       {rx_load_data(RXB1D5, $6)}
-       {rx_load_data(RXB1D6, $7)}
-       {rx_load_data(RXB1D7, $8)}
-       {rxb1_frame($#)})
+       rx_frame(0, 8))
 
 define(configure_can,
        if CANCON.REQOP2 != '1' then

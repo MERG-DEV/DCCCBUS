@@ -687,7 +687,7 @@ main_loop
 
   call    decode_dcc_packet
   call    transmit_next_cbus_event
-  call    flush_rx_buffers
+  call    receive_cbus_events
 
   bra     main_loop
 
@@ -1020,21 +1020,17 @@ transmit_next_cbus_event
 
 
 ;**********************************************************************
-flush_rx_buffers
+receive_cbus_events
 
-  ; Roll through rx buffers 7 to 0 clearing full bit, discarding any messages
-  movlw   0x07
-  iorwf   ECANCON, F
-
-flush_next_rx_buffer
-  bcf     RXB0CON, RXFUL
-  movlw   0x07
-  andwf   ECANCON, W
-  btfsc   STATUS, Z
+  btfss   COMSTAT, NOT_FIFOEMPTY
   return
 
-  decf    ECANCON, F
-  bra     flush_next_rx_buffer
+  movlw   0x07
+  andwf   CANCON, W
+  iorlw   ECANMODE
+  movwf   ECANCON
+  bcf     RXB0CON, RXFUL
+  bra     receive_cbus_events
 
 
 ;**********************************************************************
