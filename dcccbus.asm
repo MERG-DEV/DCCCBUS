@@ -22,7 +22,7 @@
 ;   FSR0 is dedicated to accesses the received DCC packet queue       *
 ;   during interrupts.                                                *
 ;   Outside interrupts FSR1 accesses both the received DCC packet and *
-;   CBUS event transmission queues.                                   *
+;   CBUS event transmission and reception queues.                     *
 ;                                                                     *
 ;   In paired output mode accessory outputs are assumed to be         *
 ;   complimentary pairs with pair, rather than outputs, mapping to a  *
@@ -181,6 +181,9 @@ PACKET_RX_QUEUE_SLOT_LENGTH  equ 4
 EVENT_TX_QUEUE_START        equ 0x200
 EVENT_TX_QUEUE_SLOT_LENGTH  equ 4
 
+CBUS_RX_QUEUE_START        equ 0x300
+CBUS_RX_QUEUE_SLOT_LENGTH  equ 16
+
 
   ;nolist
   include   "cbuslib_asm/boot_loader.inc"
@@ -217,6 +220,9 @@ EVENT_TX_QUEUE_SLOT_LENGTH  equ 4
 
   event_tx_queue_insert
   event_tx_queue_extract
+
+  cbus_rx_queue_insert
+  cbus_rx_queue_extract
 
   previous_dcc_packet_byte_1
   previous_dcc_packet_byte_2
@@ -533,6 +539,8 @@ initialisation
   call    clear_ram_loop
   lfsr    FSR0, EVENT_TX_QUEUE_START
   call    clear_ram_loop
+  lfsr    FSR0, CBUS_RX_QUEUE_START
+  call    clear_ram_loop
 
   ; Turn off  A/D, all bits digital I/O
   clrf    ADCON0
@@ -644,6 +652,10 @@ can_normal_wait
   movwf   event_tx_queue_insert
   movwf   event_tx_queue_extract
 
+  movlw   low CBUS_RX_QUEUE_START
+  movwf   cbus_rx_queue_insert
+  movwf   cbus_rx_queue_extract
+
   ; DCC reception to start seeking new packet on next rising edge
   bsf     INTCON2, INTEDG0  ; Next interrupt on rising edge, start of DCC bit
   bsf     DCC_SYNCHRONISE_FLAG
@@ -687,7 +699,8 @@ main_loop
 
   call    decode_dcc_packet
   call    transmit_next_cbus_event
-  call    receive_cbus_events
+  call    receive_cbus_messages
+  call    dequeue_next_cbus_message
 
   bra     main_loop
 
@@ -1020,7 +1033,13 @@ transmit_next_cbus_event
 
 
 ;**********************************************************************
-receive_cbus_events
+receive_cbus_messages
+
+  movlw   CBUS_RX_QUEUE_SLOT_LENGTH
+  addwf   cbus_rx_queue_insert, W
+  xorwf   cbus_rx_queue_extract, W
+  btfsc   STATUS, Z         ; Skip if CBUS Rx queue is not full
+  return
 
   btfss   COMSTAT, NOT_FIFOEMPTY
   return
@@ -1029,8 +1048,40 @@ receive_cbus_events
   andwf   CANCON, W
   iorlw   ECANMODE
   movwf   ECANCON
+
+  lfsr    FSR1, CBUS_RX_QUEUE_START
+  movff   cbus_rx_queue_insert, FSR1L
+
+  movff   RXB0DLC, POSTINC1
+  movff   RXB0SIDH, POSTINC1
+  movff   RXB0SIDL, POSTINC1
+  movff   RXB0D0, POSTINC1
+  movff   RXB0D1, POSTINC1
+  movff   RXB0D2, POSTINC1
+  movff   RXB0D3, POSTINC1
+  movff   RXB0D4, POSTINC1
+  movff   RXB0D5, POSTINC1
+  movff   RXB0D6, POSTINC1
+  movff   RXB0D7, INDF1
+
+  ; Advance message insert offset to start of next slot, wrap round end of queue
+  movlw   CBUS_RX_QUEUE_SLOT_LENGTH
+  addwf   cbus_rx_queue_insert, F
+
   bcf     RXB0CON, RXFUL
-  bra     receive_cbus_events
+  bra     receive_cbus_messages
+
+
+;**********************************************************************
+dequeue_next_cbus_message
+
+  movf    cbus_rx_queue_insert, W
+  xorwf   cbus_rx_queue_extract, W
+  movlw   CBUS_RX_QUEUE_SLOT_LENGTH
+  btfss   STATUS, Z         ; Skip if message Rx queue is empty
+  addwf   cbus_rx_queue_extract, F
+
+  return
 
 
 ;**********************************************************************
