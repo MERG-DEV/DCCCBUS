@@ -11,17 +11,20 @@ define(test_data,
 
 define(TXBNCON, TXB$1CON)
 
+define(tx_check_ready,
+       if TXBNCON($1).TXREQ == '1' then
+         log(Tx)
+       else
+         {ifelse($2, {}, log(No Tx), log(No Tx in $2 ms))}
+       end if;)
+
 define(txN_wait_if_not_ready,
        if TXBNCON($1).TXREQ == '0' then
          {ifelse($2, {}, log(Awaiting Tx), log(Awaiting Tx for $2 ms))}
          {ifelse($2, {}, wait until TXBNCON($1).TXREQ == '1';,
                          wait until TXBNCON($1).TXREQ == '1' for $2 ms;)}
        end if;
-       if TXBNCON($1).TXREQ == '1' then
-         log(Tx)
-       else
-         {ifelse($2, {}, log(No Tx), log(No Tx in $2 ms))}
-       end if;)
+       tx_check_ready($1, $2))
 
 define(tx2_wait_if_not_ready, txN_wait_if_not_ready(2, $1))
 
@@ -94,20 +97,24 @@ define(tx_wait_for_cmderr_message,
                             $3, error number)})
 
 define(tx_arbitration_lost_interrupt,
+       tx_wait_if_not_ready
        TXB1CON.TXLARB <= '1';
        CANSTAT <= 16#02#;
        PIR3.ERRIF <= '1';
        wait_for_low_priority_interrupt
        TXB1CON.TXLARB <= '0';
-       CANSTAT <= 0;)
+       CANSTAT <= 0;
+       tx_check_ready(1))
 
 define(tx_transmission_error_interrupt,
+       tx_wait_if_not_ready
        TXB1CON.TXERR <= '1';
        CANSTAT <= 16#02#;
        PIR3.ERRIF <= '1';
        wait_for_low_priority_interrupt
        TXB1CON.TXERR <= '0';
-       CANSTAT <= 0;)
+       CANSTAT <= 0;
+       tx_check_ready(1))
 
 define(tx_rtr,
        tx_wait_if_not_ready

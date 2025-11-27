@@ -75,7 +75,6 @@ beginning_of_test(61)
       tx_wait_for_node_message(OPC_ASON1, 0, 0, 0, EN high, 0, EN low, 42, Data)
       tx_check_can_id(top priority, 2#00000000#, 2#00100000#)
       --
-      tx_wait_if_not_ready
       tx_count := 12;
       while tx_count > 0 loop
         tx_transmission_error_interrupt
