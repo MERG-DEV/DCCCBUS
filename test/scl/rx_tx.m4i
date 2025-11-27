@@ -1,13 +1,13 @@
 divert(-1)
 
-define(tx_check_data,
+define(check_data,
        if $1 != $2 then
          log($3 != $2)
          test_state := fail;
        end if;)
 
-define(tx_test_data,
-       {ifelse( $2, {}, {--}, tx_check_data($1,  $2,   $3))})
+define(test_data,
+       {ifelse( $2, {}, {--}, check_data($1,  $2,   $3))})
 
 define(TXBNCON, TXB$1CON)
 
@@ -29,9 +29,9 @@ define(tx_wait_for_rtr_response,
        tx2_wait_if_not_ready
        TXB2CON.TXREQ <= '0';
        log(RTR response sent)
-       {tx_check_data(TXB2SIDH,  $1,   RTR SIDH)}
-       {tx_check_data(TXB2SIDL,  $2,   RTR SIDL)}
-       {tx_check_data(TXB2DLC,    0,   RTR data length)})
+       {check_data(TXB2SIDH,  $1,   RTR SIDH)}
+       {check_data(TXB2SIDL,  $2,   RTR SIDL)}
+       {check_data(TXB2DLC,    0,   RTR data length)})
 
 define(tx_check_no_rtr_response,
        {tx2_wait_if_not_ready($1)}
@@ -73,15 +73,15 @@ define(tx_wait_for_message,
        log(Waiting for Tx of $1)
        tx_wait_if_not_ready
        TXB1CON.TXREQ <= '0';
-       {tx_test_data(TXB1D0,  $2,   $3)}
-       {tx_test_data(TXB1D1,  $4,   $5)}
-       {tx_test_data(TXB1D2,  $6,   $7)}
-       {tx_test_data(TXB1D3,  $8,   $9)}
-       {tx_test_data(TXB1D4, $10,  $11)}
-       {tx_test_data(TXB1D5, $12,  $13)}
-       {tx_test_data(TXB1D6, $14,  $15)}
-       {tx_test_data(TXB1D7, $16,  $17)}
-       {tx_test_data(TXB1DLC, tx_data_count(shift($@)), Frame length)})
+       {test_data(TXB1D0,  $2,   $3)}
+       {test_data(TXB1D1,  $4,   $5)}
+       {test_data(TXB1D2,  $6,   $7)}
+       {test_data(TXB1D3,  $8,   $9)}
+       {test_data(TXB1D4, $10,  $11)}
+       {test_data(TXB1D5, $12,  $13)}
+       {test_data(TXB1D6, $14,  $15)}
+       {test_data(TXB1D7, $16,  $17)}
+       {test_data(TXB1DLC, tx_data_count(shift($@)), Frame length)})
 
 define(tx_wait_for_node_message,
        {tx_wait_for_message(node message, $1, Opcode, $2, Node Number (high),
