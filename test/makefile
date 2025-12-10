@@ -19,7 +19,7 @@ scl_incs := $(wildcard $(scl_dir)/*.m4i)
 scl_m4s := $(wildcard $(scl_dir)/*.m4)
 scl_m4f := $(scl_dir)/base.m4f
 
-.PHONE: build_and_test
+.PHONY: build_and_test
 build_and_test:
 	@cd .. && $(MAKE) --silent
 	@$(MAKE) --silent test
@@ -46,13 +46,13 @@ $(logs): $(log_dir)/%.log: $(mdb_dir)/%.mdb $(scl_dir)/%.scl $(cof_dir)/*.produc
 $(log_dir):
 	@mkdir -p $(log_dir)
 
-$(mdb_m4f): $(mdb_incs)
+$(mdb_m4f): %.m4f: %.m4 $(mdb_incs)
 	@cd $(@D) && m4 --freeze-state=$(@F) $(@F:.m4f=.m4)
 
 $(mdbs): %.mdb: %.m4 $(mdb_m4f)
 	@cd $(@D) && m4 --reload-state=$(notdir $(mdb_m4f)) $(<F) > $(@F)
 
-$(scl_m4f): $(scl_incs)
+$(scl_m4f): %.m4f: %.m4 $(scl_incs)
 	@cd $(@D) && m4 --freeze-state=$(@F) $(@F:.m4f=.m4)
 
 $(scls): %.scl: %.m4 $(scl_m4f)
