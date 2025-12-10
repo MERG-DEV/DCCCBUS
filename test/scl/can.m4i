@@ -11,33 +11,33 @@ define(test_data,
 
 define(TXBNCON, TXB$1CON)
 
-define(tx_check_ready,
+define(can_tx_check_ready,
        if TXBNCON($1).TXREQ == '1' then
          log(Tx)
        else
          {ifelse($2, {}, log(No Tx), log(No Tx in $2 ms))}
        end if;)
 
-define(txN_wait_if_not_ready,
+define(can_txN_wait_if_not_ready,
        if TXBNCON($1).TXREQ == '0' then
          {ifelse($2, {}, log(Awaiting Tx), log(Awaiting Tx for $2 ms))}
          {ifelse($2, {}, wait until TXBNCON($1).TXREQ == '1';,
                          wait until TXBNCON($1).TXREQ == '1' for $2 ms;)}
        end if;
-       tx_check_ready($1, $2))
+       can_tx_check_ready($1, $2))
 
-define(tx2_wait_if_not_ready, txN_wait_if_not_ready(2, $1))
+define(can_tx2_wait_if_not_ready, can_txN_wait_if_not_ready(2, $1))
 
-define(tx_wait_for_rtr_response,
-       tx2_wait_if_not_ready
+define(can_tx_wait_for_rtr_response,
+       can_tx2_wait_if_not_ready
        TXB2CON.TXREQ <= '0';
        log(RTR response sent)
        {check_data(TXB2SIDH,  $1,   RTR SIDH)}
        {check_data(TXB2SIDL,  $2,   RTR SIDL)}
        {check_data(TXB2DLC,    0,   RTR data length)})
 
-define(tx_check_no_rtr_response,
-       {tx2_wait_if_not_ready($1)}
+define(can_tx_check_no_rtr_response,
+       {can_tx2_wait_if_not_ready($1)}
        if TXB2CON.TXREQ == '1' then
          log(Unexpected RTR response sent)
          test_state := fail;
@@ -46,9 +46,9 @@ define(tx_check_no_rtr_response,
          log(No RTR response sent in $1 ms)
        end if;)
 
-define(tx_wait_if_not_ready, txN_wait_if_not_ready(1, $1))
+define(can_tx_wait_if_not_ready, can_txN_wait_if_not_ready(1, $1))
 
-define(tx_check_for_no_message,
+define(can_tx_check_for_no_message,
        log(Checking no Tx of $2 for $1 ms)
        if TXB1CON.TXREQ == '0' then
          wait until TXB1CON.TXREQ == '1' for $1 ms;
@@ -59,8 +59,8 @@ define(tx_check_for_no_message,
          TXB1CON.TXREQ <= '0';
        end if;)
 
-define(tx_check_no_message,
-       {ifelse($1, {}, {--}, tx_wait_if_not_ready($1))}
+define(can_tx_check_no_message,
+       {ifelse($1, {}, {--}, can_tx_wait_if_not_ready($1))}
        if TXB1CON.TXREQ == '1' then
          log(Unexpected message sent)
          test_state := fail;
@@ -69,12 +69,12 @@ define(tx_check_no_message,
          {ifelse($1, {}, log(No message sent), log(No message sent in $1 ms))}
        end if;)
 
-define(tx_data_count,
-       {ifelse($1, {}, 0, {incr(tx_data_count(shift(shift($*))))})})
+define(can_tx_data_count,
+       {ifelse($1, {}, 0, {incr(can_tx_data_count(shift(shift($*))))})})
 
-define(tx_wait_for_message,
+define(can_tx_wait_for_message,
        log(Waiting for Tx of $1)
-       tx_wait_if_not_ready
+       can_tx_wait_if_not_ready
        TXB1CON.TXREQ <= '0';
        {test_data(TXB1D0,  $2,   $3)}
        {test_data(TXB1D1,  $4,   $5)}
@@ -84,33 +84,33 @@ define(tx_wait_for_message,
        {test_data(TXB1D5, $12,  $13)}
        {test_data(TXB1D6, $14,  $15)}
        {test_data(TXB1D7, $16,  $17)}
-       {test_data(TXB1DLC, tx_data_count(shift($*)), Frame length)})
+       {test_data(TXB1DLC, can_tx_data_count(shift($*)), Frame length)})
 
-define(tx_wait_for_node_message,
-       {tx_wait_for_message(node message, $1, Opcode, $2, Node Number (high),
+define(can_tx_wait_for_node_message,
+       {can_tx_wait_for_message(node message, $1, Opcode, $2, Node Number (high),
                             $3, Node Number (low), shift(shift(shift($*))))})
 
-define(tx_wait_for_cmderr_message,
-       {tx_wait_for_message(command error, OPC_CMDERR, Opcode,
+define(can_tx_wait_for_cmderr_message,
+       {can_tx_wait_for_message(command error, OPC_CMDERR, Opcode,
                             $1, Node Number (high), $2, Node Number (low),
                             $3, error number)})
 
-define(tx_error_interrupt,
-       tx_wait_if_not_ready
+define(can_tx_error_interrupt,
+       can_tx_wait_if_not_ready
        TXB1CON.$1 <= '1';
        CANSTAT <= 16#02#;
        PIR3.ERRIF <= '1';
        wait_for_low_priority_interrupt
        TXB1CON.$1 <= '0';
        CANSTAT <= 0;
-       tx_check_ready(1))
+       can_tx_check_ready(1))
 
-define(tx_arbitration_lost_interrupt, tx_error_interrupt(TXLARB))
+define(can_tx_arbitration_lost_interrupt, can_tx_error_interrupt(TXLARB))
 
-define(tx_transmission_error_interrupt, tx_error_interrupt(TXERR))
+define(can_tx_transmission_error_interrupt, can_tx_error_interrupt(TXERR))
 
-define(tx_rtr,
-       tx_wait_if_not_ready
+define(can_tx_rtr,
+       can_tx_wait_if_not_ready
        TXB1CON.TXREQ <= '0';
        if TXB1DLC.TXRTR == '1' then
          log(RTR request)
@@ -119,7 +119,7 @@ define(tx_rtr,
          test_state := fail;
        end if;)
 
-define(tx_check_can_id,
+define(can_tx_check_can_id,
        if TXB1SIDH != $2 then
          log(Incorrect $1 CAN Id SIDH)
          test_state := fail;
@@ -134,79 +134,79 @@ define(tx_check_can_id,
          end if;
        end if;)
 
-define(tx_can_id,
-       tx_wait_if_not_ready
+define(can_tx_can_id,
+       can_tx_wait_if_not_ready
        TXB1CON.TXREQ <= '0';
-       tx_check_can_id($1, $2, $3))
+       can_tx_check_can_id($1, $2, $3))
 
-define(rx_wait_if_not_ready,
+define(can_rx_wait_if_not_ready,
        if RXB0CON.RXFUL != '0' then
          log(Waiting to Rx)
          wait until RXB0CON.RXFUL == '0';
          log(Ready to Rx)
        end if;)
 
-define(rx_frame,
-       rx_wait_if_not_ready
+define(can_rx_frame,
+       can_rx_wait_if_not_ready
        CANCON <= 16#0$1#;
        CANSTAT <= 16#0{eval(0x10 | $1, 16)}#;
        COMSTAT.RXB0OVFL_nFIFOEMPTY <= '1';
        RXB0DLC <= 16#0$2#;
        RXB0CON.RXFUL <= '1';
        log(Rx)
-       rx_wait_if_not_ready
+       can_rx_wait_if_not_ready
        {check_data(ECANCON, 16#0eval(0xB0 | $1, 16)#, ECANCON)}
        COMSTAT <= 0;)
 
-define(rx_rtr,
-       rx_frame(0, 40))
+define(can_rx_rtr,
+       can_rx_frame(0, 40))
 
-define(rx_sid,
+define(can_rx_sid,
        RXB0SIDH <= $1;
        RXB0SIDL <= $2;
-       rx_frame(0, 0))
+       can_rx_frame(0, 0))
 
-define(rx_load_data,
+define(can_rx_load_data,
        {ifelse($2, {}, $1 <= 0;, $1 <= $2;)})
 
-define(fifo_rx_data,
-       {rx_load_data(RXB0D0, $2)}
-       {rx_load_data(RXB0D1, $3)}
-       {rx_load_data(RXB0D2, $4)}
-       {rx_load_data(RXB0D3, $5)}
-       {rx_load_data(RXB0D4, $6)}
-       {rx_load_data(RXB0D5, $7)}
-       {rx_load_data(RXB0D6, $8)}
-       {rx_load_data(RXB0D7, $9)}
-       {rx_frame($1, eval($# - 1))})
+define(can_fifo_rx_data,
+       {can_rx_load_data(RXB0D0, $2)}
+       {can_rx_load_data(RXB0D1, $3)}
+       {can_rx_load_data(RXB0D2, $4)}
+       {can_rx_load_data(RXB0D3, $5)}
+       {can_rx_load_data(RXB0D4, $6)}
+       {can_rx_load_data(RXB0D5, $7)}
+       {can_rx_load_data(RXB0D6, $8)}
+       {can_rx_load_data(RXB0D7, $9)}
+       {can_rx_frame($1, eval($# - 1))})
 
-define(rx_data, fifo_rx_data(0, $*))
+define(can_rx_data, can_fifo_rx_data(0, $*))
 
-define(rx_data_file_event,
+define(can_rx_data_file_event,
        read(data_file, RXB0D0, 1); -- Opcode
        read(data_file, RXB0D1, 1); -- Node high
        read(data_file, RXB0D2, 1); -- Node low
        read(data_file, RXB0D3, 1); -- Event high
        read(data_file, RXB0D4, 1); -- Event low
-       rx_frame(0, 5))
+       can_rx_frame(0, 5))
 
 define(enter_learn_mode,
-       {rx_data(OPC_NNLRN, $*) -- NNLRN, CBUS enter learn mode}
+       {can_rx_data(OPC_NNLRN, $*) -- NNLRN, CBUS enter learn mode}
        wait_until_idle)
 
 define(exit_learn_mode,
-       {rx_data(OPC_NNULN, $*) -- NNULN, CBUS exit learn mode}
+       {can_rx_data(OPC_NNULN, $*) -- NNULN, CBUS exit learn mode}
        wait_until_idle)
 
-define(rx_data_file_unlearn,
+define(can_rx_data_file_unlearn,
        RXB0D0 <= OPC_EVULN; -- Opcode
        read(data_file, RXB0D1, 1); -- Node high
        read(data_file, RXB0D2, 1); -- Node low
        read(data_file, RXB0D3, 1); -- Event high
        read(data_file, RXB0D4, 1); -- Event low
-       rx_frame(0, 5))
+       can_rx_frame(0, 5))
 
-define(rx_data_file_learn,
+define(can_rx_data_file_learn,
        RXB0D0 <= OPC_EVLRN; -- Opcode
        read(data_file, RXB0D1, 1); -- Node high
        read(data_file, RXB0D2, 1); -- Node low
@@ -214,9 +214,9 @@ define(rx_data_file_learn,
        read(data_file, RXB0D4, 1); -- Event low
        read(data_file, RXB0D5, 1); -- Event variable index
        read(data_file, RXB0D6, 1); -- Event variable value
-       rx_frame(0, 7))
+       can_rx_frame(0, 7))
 
-define(rx_data_file_indexed_learn,
+define(can_rx_data_file_indexed_learn,
        RXB0D0 <= OPC_EVLRNI; -- Opcode
        read(data_file, RXB0D1, 1); -- Node high
        read(data_file, RXB0D2, 1); -- Node low
@@ -225,7 +225,7 @@ define(rx_data_file_indexed_learn,
        read(data_file, RXB0D5, 1); -- Event index
        read(data_file, RXB0D6, 1); -- Event variable index
        read(data_file, RXB0D7, 1); -- Event variable value
-       rx_frame(0, 8))
+       can_rx_frame(0, 8))
 
 define(configure_can,
        if CANCON.REQOP2 != '1' then
