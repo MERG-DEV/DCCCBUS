@@ -187,6 +187,7 @@ CBUS_RX_QUEUE_SLOT_LENGTH  equ 16
 
   ;nolist
   include   "cbuslib_asm/boot_loader.inc"
+  include   "cbuslib_asm/can.inc"
   ;list
 
 
@@ -234,6 +235,8 @@ CBUS_RX_QUEUE_SLOT_LENGTH  equ 16
   event_extra_data
 
   tx_lost_arbitration_count
+
+  null    ; Used when need to copy zero
 
   ENDC
 #if (0xFF) < (tx_lost_arbitration_count)
@@ -463,44 +466,8 @@ low_priority_interrupt
 
   bcf     PIR3, ERRIF
 
-  banksel TXB1CON
-  movlw   (1 << TXABT) | (1 << TXLARB) | (1 << TXERR)
-  andwf   TXB1CON, W
-  btfsc   STATUS, Z
-  bra     not_can_tx_error_interrupt
+  Handle_CAN_Tx_Error tx_lost_arbitration_count
 
-  btfss   TXB1CON, TXLARB
-  bra     tx_error_done
-
-  incfsz  tx_lost_arbitration_count, W
-  movwf   tx_lost_arbitration_count
-
-  ; Bits 7 and 6 of SIDH used for Tx message priority,
-  ;   10 = Normal, 01 = High, 00 = Top
-  btfss   TXB1SIDH, SID10           ; Skip if priority is normal ...
-  bra     tx_at_raised_priority     ; ... else already at high or top priority
-
-  movlw   CAN_LOST_ARBITRATION_LIMIT
-  cpfsgt  tx_lost_arbitration_count ; Skip if need to raise priority
-  bra     tx_error_done
-  bra     tx_raise_priority
-
-tx_at_raised_priority
-  btfss   TXB1SIDH, SID9            ; Skip if priority is high ...
-  bra     tx_error_done             ; ... else already at top priority
-
-  movlw   CAN_LOST_ARBITRATION_LIMIT * 2
-  cpfsgt  tx_lost_arbitration_count ; Skip if need to raise priority
-  bra     tx_error_done
-
-tx_raise_priority
-  movlw   CAN_RAISE_SIDH_PRIORITY
-  addwf   TXB1SIDH, F
-
-tx_error_done
-  bsf     TXB1CON, TXREQ    ; Repeat transmission, clears CAN Tx error flags
-
-not_can_tx_error_interrupt
 not_can_error_interrupt
 exit_low_priority_interrupt
   ; Restore register values protected after interrupt
@@ -560,7 +527,7 @@ initialisation
   movwf   TRISB
   Set_FLiM_LED_Off
   Set_SLiM_LED_Off
-  bsf     LATB,CANTX        ; Initialise CAN Tx as recessive
+  bsf     LATB, CANTX        ; Initialise CAN Tx as recessive
 
   clrf    LATC
   movlw   b'11100000'       ; PortA: bit 7 (RC7), paired mode input
@@ -570,69 +537,7 @@ initialisation
 
   clrf    EECON1            ; Disable accesses to program memory
 
-  banksel CANCON
-  bsf     CANCON,REQOP2     ; Request CAN module configure mode
-
-can_config_wait
-  movf    CANSTAT, W
-  andlw   b'11100000'       ; Mask out all except operation mode bits
-  xorlw   b'10000000'       ; Test for configuration mode
-  tstfsz  WREG              ; Skip if in configuration mode ...
-  bra     can_config_wait   ; ... else wait
-
-  ; Set CAN bit rate and sample point
-
-  movlw   b'00000011'       ; Synchronisation jump width = 1 Tq
-                            ; Tq = 8/Fosc
-  movwf   BRGCON1
-
-  movlw   b'11011110'       ; Phase segment 2 freely programmable, SEG2PHTS
-                            ; Bus sampled three times up to sample point
-                            ; Phase segment 1 = 4 Tq
-                            ; Propogation segment = 7 Tq
-  movwf   BRGCON2
-
-  movlw   b'00000011'       ; Enable bus activity wake up
-                            ; Bus line filter not used for wake up
-                            ; Phase segment 2 (4 Tq) but ignored as ...
-                            ; ... SEG2PHTS is set so = Phase segment 1 (4 Tq)
-  movwf   BRGCON3
-
-  ; Sum of segments (syncronisation fixed at 1 Tq) = 16 Tq => 125,000 Kb/s, ...
-  ; ... sample point is nominally 12 Tq = 75% of nominal bit time
-
-  movlw   b'00100000'       ; CAN Tx to Vdd when recesive
-                            ; Disable message capture
-  movwf   CIOCON
-
-  movlw   ECANMODE
-  movwf   ECANCON
-
-  movlw   b'00100100'       ; Receive valid messages as per acceptance filters
-  movwf   RXB0CON
-
-  clrf    RXB1CON           ; Receive valid messages as per acceptance filters
-
-  clrf    RXF0SIDL
-  clrf    RXF1SIDL
-
-  lfsr    FSR0, RXM0SIDH    ; Clear Rx acceptance masks
-  movlw   low RXM1EIDL + 1
-
-clear_rx_masks_loop
-  clrf    POSTINC0
-  cpfseq  FSR0L
-  bra     clear_rx_masks_loop
-
-  clrf    CANCON            ; Request CAN module normal mode
-
-can_normal_wait
-  movf    CANSTAT, W
-  andlw   b'11100000'       ; Mask out all except operation mode bits
-  bnz     can_normal_wait   ; Loop if CAN module not in normal mode
-
-  bcf     COMSTAT, RXB0OVFL ; Ensure overflow flags are clear
-  bcf     COMSTAT, RXB1OVFL
+  Configure_CAN_with_Rx_FIFO
 
   movlb   0                 ; CAN setup complete, select RAM bank 0
 
@@ -989,45 +894,23 @@ rcn213_address_above_3
 ;**********************************************************************
 transmit_next_cbus_event
 
-  banksel TXB1CON
-  btfsc   TXB1CON, TXREQ
-  return
+  If_Tx_Busy return
 
   movf    event_tx_queue_insert, W
   xorwf   event_tx_queue_extract, W
   btfsc   STATUS, Z         ; Skip if event Tx queue is not empty
   return
 
+  clrf    tx_lost_arbitration_count
+
   lfsr    FSR1, EVENT_TX_QUEUE_START
   movff   event_tx_queue_extract, FSR1L
 
-  ; Number of bytes for transmission derived from opcode
-  swapf   INDF1, W
-  rrncf   WREG, W
-  andlw   0x07
-  incf    WREG, W
-  movwf   TXB1DLC
-
-  movff   POSTINC1, TXB1D0  ; Opcode
-  clrf    TXB1D1            ; NN High
-  clrf    TXB1D2            ; NN Low
-  movff   POSTINC1, TXB1D3  ; EN High
-  movff   POSTINC1, TXB1D4  ; EN Low
-  movff   POSTINC1, TXB1D5  ; Additional data
-  clrf    TXB1D6
-  clrf    TXB1D7
-
-  movlw   CAN_SIDH
-  movwf   TXB1SIDH
-  movlw   CAN_SIDL
-  movwf   TXB1SIDL
+  Tx_CBUS_Msg POSTINC1, null, null, POSTINC1, POSTINC1, POSTINC1, null, null, CAN_SIDH, CAN_SIDL
 
   ; Advance event extract offset to start of next slot, wrap round end of queue
   movlw   EVENT_TX_QUEUE_SLOT_LENGTH
   addwf   event_tx_queue_extract, F
-
-  clrf    tx_lost_arbitration_count
-  bsf     TXB1CON, TXREQ
 
   return
 
@@ -1035,40 +918,23 @@ transmit_next_cbus_event
 ;**********************************************************************
 receive_cbus_messages
 
+  If_Rx_FIFO_Empty return
+
   movlw   CBUS_RX_QUEUE_SLOT_LENGTH
   addwf   cbus_rx_queue_insert, W
   xorwf   cbus_rx_queue_extract, W
   btfsc   STATUS, Z         ; Skip if CBUS Rx queue is not full
   return
 
-  btfss   COMSTAT, NOT_FIFOEMPTY
-  return
-
-  movlw   0x07
-  andwf   CANCON, W
-  iorlw   ECANMODE
-  movwf   ECANCON
-
   lfsr    FSR1, CBUS_RX_QUEUE_START
   movff   cbus_rx_queue_insert, FSR1L
 
-  movff   RXB0DLC, POSTINC1
-  movff   RXB0SIDH, POSTINC1
-  movff   RXB0SIDL, POSTINC1
-  movff   RXB0D0, POSTINC1
-  movff   RXB0D1, POSTINC1
-  movff   RXB0D2, POSTINC1
-  movff   RXB0D3, POSTINC1
-  movff   RXB0D4, POSTINC1
-  movff   RXB0D5, POSTINC1
-  movff   RXB0D6, POSTINC1
-  movff   RXB0D7, INDF1
+  Rx_From_FIFO POSTINC1, POSTINC1, POSTINC1, POSTINC1, POSTINC1, POSTINC1, POSTINC1, POSTINC1, POSTINC1, POSTINC1, INDF1
 
   ; Advance message insert offset to start of next slot, wrap round end of queue
   movlw   CBUS_RX_QUEUE_SLOT_LENGTH
   addwf   cbus_rx_queue_insert, F
 
-  bcf     RXB0CON, RXFUL
   bra     receive_cbus_messages
 
 
