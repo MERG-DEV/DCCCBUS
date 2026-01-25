@@ -1,4 +1,4 @@
 [submodule "cbuslib"]
 	path = cbuslib_asm
-	url = /home/chris/github/cbuslib_asm.git/
+	url = ../cbuslib_asm.git/
 	branch = Refactor
