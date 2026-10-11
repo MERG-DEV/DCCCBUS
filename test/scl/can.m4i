@@ -27,7 +27,8 @@ define(can_txN_wait_if_not_ready,
        can_tx_check_ready($1, $2))
 
 define(can_tx_wait_if_not_ready,
-       {ifelse($1, {}, can_txN_wait_if_not_ready(1), can_txN_wait_if_not_ready(1, $1))})
+       {ifelse($1, {}, can_txN_wait_if_not_ready(1),
+                       can_txN_wait_if_not_ready(1, $1))})
 
 define(can_tx_wait_for_rtr_response,
        can_txN_wait_if_not_ready(2)
@@ -47,17 +48,6 @@ define(can_tx_check_no_rtr_response,
          log(No RTR response sent in $1 ms)
        end if;)
 
-define(can_tx_check_for_no_message,
-       log(Checking no Tx of $2 for $1 ms)
-       if TXB1CON.TXREQ == '0' then
-         wait until TXB1CON.TXREQ == '1' for $1 ms;
-       end if;
-       if TXB1CON.TXREQ == '1' then
-         log(Unexpected Tx)
-         test_state := fail;
-         TXB1CON.TXREQ <= '0';
-       end if;)
-
 define(can_tx_check_no_message,
        {ifelse($1, {}, {--}, can_tx_wait_if_not_ready($1))}
        if TXB1CON.TXREQ == '1' then
@@ -68,13 +58,19 @@ define(can_tx_check_no_message,
          {ifelse($1, {}, log(No message sent), log(No message sent in $1 ms))}
        end if;)
 
+define(can_tx_check_for_no_message,
+       log(Checking no Tx of $2 for $1 ms)
+       if TXB1CON.TXREQ == '0' then
+         wait until TXB1CON.TXREQ == '1' for $1 ms;
+       end if;
+       can_tx_check_no_message)
+
 define(can_tx_data_count,
        {ifelse($1, {}, 0, {incr(can_tx_data_count(shift(shift($*))))})})
 
 define(can_tx_wait_for_message,
        log(Waiting for Tx of $1)
        can_tx_wait_if_not_ready
-       TXB1CON.TXREQ <= '0';
        {test_data(TXB1D0,  $2,   $3)}
        {test_data(TXB1D1,  $4,   $5)}
        {test_data(TXB1D2,  $6,   $7)}
@@ -83,16 +79,22 @@ define(can_tx_wait_for_message,
        {test_data(TXB1D5, $12,  $13)}
        {test_data(TXB1D6, $14,  $15)}
        {test_data(TXB1D7, $16,  $17)}
-       {test_data(TXB1DLC, can_tx_data_count(shift($*)), Frame length)})
+       {test_data(TXB1DLC, can_tx_data_count(shift($*)), Frame length)}
+       {wait for u_sec(eval(88 + 64 * can_tx_data_count(shift($*))));}
+       TXB1CON.TXREQ <= '0';)
 
 define(can_tx_wait_for_node_message,
-       {can_tx_wait_for_message(node message, $1, Opcode, $2, Node Number (high),
-                            $3, Node Number (low), shift(shift(shift($*))))})
+       {can_tx_wait_for_message(node message, $1, Opcode,
+                                              $2, Node Number (high),
+                                              $3, Node Number (low),
+                                              shift(shift(shift($*))))})
 
 define(can_tx_wait_for_cmderr_message,
-       {can_tx_wait_for_message(command error, OPC_CMDERR, Opcode,
-                            $1, Node Number (high), $2, Node Number (low),
-                            $3, error number)})
+       {can_tx_wait_for_message(command error,
+                                OPC_CMDERR, Opcode,
+                                $1, Node Number (high),
+                                $2, Node Number (low),
+                                $3, error number)})
 
 define(can_tx_error_interrupt,
        can_tx_wait_if_not_ready

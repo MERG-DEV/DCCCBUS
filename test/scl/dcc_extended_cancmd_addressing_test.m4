@@ -1,6 +1,6 @@
 set_test_name()
 
-beginning_of_test(297)
+beginning_of_test(299)
   begin_test
     --
     set_cancmd_addressing_on

@@ -1,6 +1,6 @@
 set_test_name()
 
-beginning_of_test(61)
+beginning_of_test(65)
     --
     variable can_tx_count  : integer;
     --
