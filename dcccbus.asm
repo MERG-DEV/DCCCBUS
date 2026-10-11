@@ -956,9 +956,9 @@ dequeue_next_cbus_message
   org  EEPROM_DATA
 
 ee_can_id
-  de  b'01111111'
-ee_module_status
-  de 0
+  de  b'01111111', 0
+ee_module_status equ ee_can_id + 1
+
 ee_node_id
   de  0, 0
 
