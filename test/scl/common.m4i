@@ -44,15 +44,18 @@ define(stop_test,
        PC <= 0;
        wait;)
 
-define(end_of_test,
+define(end_test,
          if test_state == pass then
            log(PASS)
          else
            log(FAIL)
          end if;
          stop_test
-         end process test_name;
-       end testbench;)
+         end process test_name;)
+
+define(end_of_test,
+         end_test
+         end testbench;)
 
 define(low_byte, {eval(0xFF & $1)})
 define(high_byte, {eval(0xFF & ($1 >> 8))})

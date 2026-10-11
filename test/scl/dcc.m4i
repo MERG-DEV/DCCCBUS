@@ -35,6 +35,22 @@ define(acc_byte_1, {{10}event_to_acc($1, 3, 6)})
 define(basic_acc_byte_2,
        {{1}cmp_event_to_acc($1, 3)ifelse($2, Activate, 1, 0)event_to_acc($1, 9, 3)})
 
+define(input_dcc_preamble, input_dcc_bits(eval(14, 1)))
+
+define(input_dcc_idle,
+       input_dcc_preamble
+       -- Byte One
+       input_dcc_zero
+       input_dcc_bits(eval(8, 1))
+       -- Byte Two
+       input_dcc_zero
+       input_dcc_bits(eval(8, 1))
+      -- Checksum
+       input_dcc_zero
+       input_dcc_bits(eval(8, 1))
+       -- End of Packet
+       input_dcc_one)
+
 define(_input_dcc_basic_acc,
        -- Preamble
        {input_dcc_bits($1)}
@@ -62,8 +78,7 @@ define(input_dcc_basic_acc_pair,
                             Activate)})
 
 define(input_dcc_basic_too_short_acc,
-       -- Preamble
-       {input_dcc_bits(eval(14, 1))}
+       input_dcc_preamble
        -- Byte One
        input_dcc_zero
        {input_dcc_bits(acc_byte_1(1))}
@@ -74,8 +89,7 @@ define(input_dcc_basic_too_short_acc,
        input_dcc_one)
 
 define(input_dcc_basic_too_long_acc,
-       -- Preamble
-       {input_dcc_bits(eval(14, 1))}
+       input_dcc_preamble
        -- Byte One
        input_dcc_zero
        {input_dcc_bits(acc_byte_1(1))}
@@ -94,8 +108,7 @@ define(input_dcc_basic_too_long_acc,
        input_dcc_one)
 
 define(input_dcc_basic_overrun_slot_acc,
-       -- Preamble
-       {input_dcc_bits(eval(14, 1))}
+       input_dcc_preamble
        -- Byte One
        input_dcc_zero
        {input_dcc_bits(acc_byte_1(1))}
@@ -152,8 +165,7 @@ define(extnd_acc_byte_2,
        {{0}cmp_event_to_acc($1, 3){0}event_to_acc($1, 9, 3)})
 
 define(_input_dcc_extnd_acc,
-       -- Preamble
-       {input_dcc_bits(eval(14, 1))}
+       input_dcc_preamble
        -- Byte One
        input_dcc_zero
        {input_dcc_bits($1)}
@@ -190,8 +202,7 @@ define(input_dcc_extnd_acc_invalid_byte_2_c,
                              10101010)})
 
 define(input_dcc_extnd_bad_checksum_acc,
-       -- Preamble
-       {input_dcc_bits(eval(14, 1))}
+       input_dcc_preamble
        -- Byte One
        input_dcc_zero
        {input_dcc_bits(10000001)}
@@ -208,8 +219,7 @@ define(input_dcc_extnd_bad_checksum_acc,
        input_dcc_one)
 
 define(input_dcc_extnd_overrun_slot_acc,
-       -- Preamble
-       {input_dcc_bits(eval(14, 1))}
+       input_dcc_preamble
        -- Byte One
        input_dcc_zero
        {input_dcc_bits(10000001)}
@@ -229,8 +239,7 @@ define(input_dcc_extnd_overrun_slot_acc,
        input_dcc_one)
 
 define(input_dcc_extnd_too_short_acc,
-       -- Preamble
-       {input_dcc_bits(eval(14, 1))}
+       input_dcc_preamble
        -- Byte One
        input_dcc_zero
        {input_dcc_bits(10000001)}
