@@ -26,18 +26,19 @@ define(can_txN_wait_if_not_ready,
        end if;
        can_tx_check_ready($1, $2))
 
-define(can_tx2_wait_if_not_ready, can_txN_wait_if_not_ready(2, $1))
+define(can_tx_wait_if_not_ready,
+       {ifelse($1, {}, can_txN_wait_if_not_ready(1), can_txN_wait_if_not_ready(1, $1))})
 
 define(can_tx_wait_for_rtr_response,
-       can_tx2_wait_if_not_ready
+       can_txN_wait_if_not_ready(2)
        TXB2CON.TXREQ <= '0';
        log(RTR response sent)
-       {check_data(TXB2SIDH,  $1,   RTR SIDH)}
-       {check_data(TXB2SIDL,  $2,   RTR SIDL)}
-       {check_data(TXB2DLC,    0,   RTR data length)})
+       {check_data(TXB2SIDH, $1, RTR SIDH)}
+       {check_data(TXB2SIDL, $2, RTR SIDL)}
+       {check_data(TXB2DLC,   0, RTR data length)})
 
 define(can_tx_check_no_rtr_response,
-       {can_tx2_wait_if_not_ready($1)}
+       {can_txN_wait_if_not_ready(2, $1)}
        if TXB2CON.TXREQ == '1' then
          log(Unexpected RTR response sent)
          test_state := fail;
@@ -45,8 +46,6 @@ define(can_tx_check_no_rtr_response,
        else
          log(No RTR response sent in $1 ms)
        end if;)
-
-define(can_tx_wait_if_not_ready, can_txN_wait_if_not_ready(1, $1))
 
 define(can_tx_check_for_no_message,
        log(Checking no Tx of $2 for $1 ms)
